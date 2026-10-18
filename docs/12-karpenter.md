@@ -1,4 +1,4 @@
-# 9. Karpenter on simulated nodes
+# 12. Karpenter on simulated nodes
 
 Karpenter's KWOK provider creates fake nodes instead of EC2 instances. You get
 real Karpenter decisions (which node to create, when to consolidate, when to
@@ -10,13 +10,14 @@ EKS equivalent: Karpenter with the AWS provider. `NodePool` behaves the same;
 
 ## This one is harder
 
-There's no released KWOK build. You build Karpenter from source and push the
+This is the one lesson that isn't a published chart: there's no released KWOK
+build. You build Karpenter from source and push the
 image to the local registry, and versions have to line up with Kubernetes 1.36.
 
 ## Before you start
 
 - `go`, `ko` (brew) and `kwok` (already in the brewfile).
-- The local registry (step 7).
+- The local registry (lesson 7).
 - `kubectl config current-context` is `k3d-dev`; the scripts use the current
   context.
 
@@ -30,12 +31,12 @@ image to the local registry, and versions have to line up with Kubernetes 1.36.
 4. `kubectl apply -f kwok/charts/crds`.
 5. `helm install karpenter kwok/charts -n kube-system --skip-crds` with
    `controller.image.repository` set to the same path but host
-   `k3d-registry.localhost:5000`, plus the tag and digest from step 3.
+   `k3d-registry.localhost:5000`, plus the tag and digest from task 3.
 6. A `KWOKNodeClass` named `default` and a `NodePool` referencing it, with a CPU
    limit (say 64).
 7. A Deployment of `pause` pods, each requesting 1 CPU, that only tolerates
    and selects Karpenter's nodes. Scale it to 20.
-8. `kubectl get nodeclaims,nodes -w`: watch nodes appear, and see which
+8. k9s `:nodeclaims` and `:nodes`: watch nodes appear, and see which
    instance types Karpenter picks.
 9. Scale to 2 and watch consolidation remove nodes. Try
    `disruption.consolidationPolicy` and `budgets`.

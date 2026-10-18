@@ -9,7 +9,7 @@ Secrets Manager.
 ## Before you start
 
 - `sops` and `age` (brew).
-- Candidates: the ExternalDNS TSIG secret (step 3), the CA Secret (step 4).
+- Candidates: the ExternalDNS TSIG secret (lesson 3), the CA Secret (lesson 4).
 
 ## Tasks
 

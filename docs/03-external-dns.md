@@ -8,7 +8,7 @@ Here it writes to BIND over RFC2136, authenticated with a TSIG key.
 
 ## Before you start
 
-- Flux working (step 2) and a route with a hostname under `kube.internal`.
+- Flux working (lesson 2) and a route with a hostname under `kube.internal`.
 - `dig @10.89.0.250 ns.kube.internal` answers `10.89.0.250`.
 
 ## Tasks
@@ -16,7 +16,7 @@ Here it writes to BIND over RFC2136, authenticated with a TSIG key.
 1. `HelmRepository` `https://kubernetes-sigs.github.io/external-dns/`, chart
    `external-dns`.
 2. Namespace `external-dns` and a Secret with the TSIG secret, copied by hand
-   from `dns/externaldns-tsig` (key `secret`). Step 5 moves it into Git.
+   from `dns/externaldns-tsig` (key `secret`). Lesson 5 moves it into Git.
 3. Base values, the ones you'd keep on EKS:
    ```yaml
    sources: [service, gateway-httproute, gateway-grpcroute]
@@ -41,7 +41,7 @@ Here it writes to BIND over RFC2136, authenticated with a TSIG key.
        valueFrom:
          secretKeyRef: {name: <your secret>, key: secret}
    ```
-5. `kubectl -n external-dns logs deploy/external-dns -f`: look for `Adding RR`.
+5. k9s `:pods -n external-dns`, `l` for logs: look for `Adding RR`.
 6. `dig @10.89.0.250 podinfo.kube.internal`, then from the host
    `curl http://podinfo.kube.internal/`.
 7. Delete the route and watch the record go. Look at the TXT records it keeps

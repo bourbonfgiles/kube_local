@@ -22,7 +22,7 @@ EKS equivalent: the same. Flux is also an EKS add-on option.
      --components-extra image-reflector-controller,image-automation-controller \
      --read-write-key
    ```
-   The image controllers and write key are for step 8. Adding them later means
+   The image controllers and write key are for lesson 8. Adding them later means
    bootstrapping again.
 3. `git pull`, then read `clusters/dev/flux-system/`: `gotk-components.yaml`
    is Flux itself, `gotk-sync.yaml` is the `GitRepository` and `Kustomization`
@@ -30,7 +30,7 @@ EKS equivalent: the same. Flux is also an EKS add-on option.
 4. Decide a layout, e.g. `clusters/dev/infrastructure.yaml` and
    `clusters/dev/apps.yaml`: one Flux `Kustomization` each, pointing at
    `./infrastructure` and `./apps`, with `apps` `dependsOn` `infrastructure`.
-5. Put the Gateway from step 1 under `infrastructure/`. Push, then
+5. Put the Gateway from lesson 1 under `infrastructure/`. Push, then
    `flux reconcile kustomization flux-system --with-source`.
 6. A first app under `apps/`: podinfo as an `OCIRepository`
    (`oci://ghcr.io/stefanprodan/charts/podinfo`) and a `HelmRelease`, plus an
@@ -39,8 +39,9 @@ EKS equivalent: the same. Flux is also an EKS add-on option.
    podinfo Deployment and notice it doesn't, until you set
    `spec.driftDetection.mode: enabled` on the HelmRelease.
 8. Change `replicaCount` in Git and watch helm-controller roll it out.
-9. `flux trace` a pod, `flux suspend`/`flux resume` a HelmRelease, `flux diff
-   kustomization`.
+9. Watch it all in k9s `:kustomizations`, `:helmreleases`, `:gitrepositories`.
+   Then the CLI for what k9s can't: `flux trace` a pod, `flux suspend`/`flux
+   resume` a HelmRelease, `flux diff kustomization`.
 10. Adopt Cilium (below). Leave it until the rest feels routine.
 
 ## Adopting Cilium

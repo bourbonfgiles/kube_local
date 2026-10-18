@@ -22,7 +22,7 @@ believe. Never put it in Git unencrypted.
 
 ## Before you start
 
-- Flux (step 2) and ExternalDNS (step 3), so names resolve.
+- Flux (lesson 2) and ExternalDNS (lesson 3), so names resolve.
 - `mkcert` (brew), plus `nss-tools` if you want Firefox or Chrome to trust it.
 
 ## Tasks
@@ -30,7 +30,7 @@ believe. Never put it in Git unencrypted.
 1. `mkcert -install`, then `mkcert -CAROOT` to find `rootCA.pem` and
    `rootCA-key.pem`.
 2. A `tls` Secret in namespace `cert-manager` from those two files, created by
-   hand (step 5 can move it into Git encrypted).
+   hand (lesson 5 can move it into Git encrypted).
 3. cert-manager as a HelmRelease from `oci://quay.io/jetstack/charts/cert-manager`
    with `crds.enabled: true` and Gateway API support:
    ```yaml
@@ -43,7 +43,7 @@ believe. Never put it in Git unencrypted.
 5. On the Gateway: annotation `cert-manager.io/cluster-issuer: <issuer>`, and an
    HTTPS listener on 443 with `hostname: "*.kube.internal"`, `tls.mode:
    Terminate`, and `certificateRefs` naming a Secret that doesn't exist yet.
-6. `kubectl get certificate -A` until `READY True`. cert-manager created it from
+6. k9s `:certificates` until ready. cert-manager created it from
    the listener.
 7. `curl https://podinfo.kube.internal/`, then a browser.
 8. Redirect HTTP to HTTPS: an `HTTPRoute` attached to the HTTP listener
