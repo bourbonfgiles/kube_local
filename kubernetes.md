@@ -309,6 +309,80 @@ Notes:
 - For the EKS version, swap the overlay for `provider.name: aws` and an IRSA role.
   The base values don't change.
 
+## Shared Gateway
+
+`gateway/gateway.yaml` is the one way into the cluster: a Cilium `Gateway` named
+`web` in the `gateway` namespace, listening on HTTP/80 and accepting routes from
+any namespace. Apps own their `HTTPRoute`s and attach with:
+
+```yaml
+parentRefs:
+  - name: web
+    namespace: gateway
+```
+
+That's the platform/app split Gateway API is built around, and it's the same on
+EKS. It usually gets `10.89.0.200`, the first address in the pool.
+
+## Example apps
+
+### Online Boutique (microservices)
+
+Google's demo shop: 11 services in five languages talking gRPC, Redis for the
+cart, and a load generator producing steady traffic. That makes it good for
+Hubble flows, network policy and BPF tracing.
+
+```sh
+helm upgrade --install online-boutique \
+  oci://us-docker.pkg.dev/online-boutique-ci/charts/onlineboutique --version 0.10.7 \
+  --kube-context k3d-dev -n online-boutique --create-namespace \
+  -f apps/online-boutique/values.yaml
+kubectl apply -f apps/online-boutique/route.yaml
+curl http://shop.kube.internal/
+```
+
+Things to try:
+
+- `hubble observe -n online-boutique -f` shows the gRPC fan-out behind each
+  page load.
+- Network policy: install with `--set networkPolicies.create=true`. Pods
+  outside the namespace can no longer reach `redis-cart`, but the shop itself
+  starts returning 503. Cilium's Gateway reaches the frontend from its `ingress`
+  identity (Hubble shows `(ingress)` as the source), and a plain
+  `NetworkPolicy` can't select that. Apply `apps/online-boutique/allow-gateway.yaml`,
+  a `CiliumNetworkPolicy` with `fromEntities: [ingress]`, to fix it. Envoy
+  refuses the request itself, so this shows up as a 503 rather than a Hubble
+  `DROPPED` event.
+
+### Minecraft (Java)
+
+The `itzg/minecraft` chart, vanilla 26.3, with a 5 Gi world on `local-path`.
+k3d maps host port 25565 to NodePort 30000, so point a client at this machine's
+LAN address.
+
+```sh
+helm repo add itzg https://itzg.github.io/minecraft-server-charts/
+helm upgrade --install minecraft itzg/minecraft --version 5.2.0 \
+  --kube-context k3d-dev -n minecraft --create-namespace \
+  -f apps/minecraft/values.yaml -f overlays/local/minecraft-values.yaml
+```
+
+- `eula: "TRUE"` in the values means you accept the Minecraft EULA.
+- The world lives on the node's disk and goes when the cluster is deleted.
+- A JVM with a 2 GB heap is a decent subject for BPF profiling. The values set
+  `-XX:+PreserveFramePointer` so stacks stay walkable. Rootful Podman shares
+  the host's PID view, so the tools run on the host (the dotfiles `bpf` step
+  layers `bpftrace` and the BCC tools):
+
+  ```sh
+  PID=$(pgrep -f '^java .*minecraft_server')
+  sudo /usr/share/bcc/tools/profile -p "$PID" -F 49 30 > mc.stacks
+  sudo /usr/share/bcc/tools/offcputime -p "$PID" 10
+  ```
+
+  Java frames show as hex addresses until you add a perf map agent; the BPF
+  Performance Tools book's Java chapter covers that.
+
 ## Registry
 
 - Persistent standalone k3d registry (created by the dotfiles, not the
