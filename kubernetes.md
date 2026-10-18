@@ -80,6 +80,169 @@ Re-runnable. Flux (or Argo CD) is installed by hand afterwards; see README.md.
 GitOps tools reconcile from the pushed remote branch, not from this checkout.
 `bootstrap.sh` reads local files; Flux only sees what's on GitHub.
 
+## Working with the cluster
+
+k3d writes the `k3d-dev` context into `~/.kube/config` and makes it current.
+Pass `--context k3d-dev` (or `--kube-context` for helm) whenever you also have
+work contexts, so nothing lands on the wrong cluster.
+
+| To | Run |
+| --- | --- |
+| Poke at resources | `kubectl`, `k9s` |
+| See the node containers | `kpodman ps` (plain `podman` is rootless and shows nothing) |
+| Cilium health | `cilium status --context k3d-dev` |
+| Live flows | `cilium hubble port-forward &` then `hubble observe -f` |
+| Hubble UI | `cilium hubble ui` |
+| Reach a LoadBalancer/Gateway | Its `10.89.0.2xx` address, straight from the host |
+
+## Getting started with Flux
+
+Flux pulls from GitHub, not from this checkout. Push before expecting a change.
+
+### If you know Argo CD
+
+| Argo CD | Flux |
+| --- | --- |
+| `Application` (Git path) | `GitRepository` + `Kustomization` (Flux's sync object, not Kustomize overlays) |
+| `Application` (Helm chart) | `HelmRepository`/`OCIRepository` + `HelmRelease` |
+| repo-server | source-controller |
+| App of apps | A `Kustomization` whose path contains more `Kustomization`s |
+| Sync / auto-sync | Continuous by `interval`; force with `flux reconcile` |
+| Disable auto-sync | `flux suspend` / `flux resume` |
+| Prune, health checks | `prune: true`, `wait: true` |
+| UI | None built in; use `flux get`, `flux events`, `k9s` |
+
+There is no Kustomize unless you add a `kustomization.yaml` yourself. A Flux
+`Kustomization` pointed at a plain directory applies every manifest in it.
+
+### 1. Bootstrap
+
+Create a fine-grained GitHub token scoped to `kube_local` with Administration
+read/write (bootstrap adds an SSH deploy key), Contents read/write, and
+Metadata read.
+
+```sh
+flux check --pre --context k3d-dev
+export GITHUB_TOKEN=...
+flux bootstrap github --context k3d-dev \
+  --owner bourbonfgiles --repository kube_local --personal --private=false \
+  --branch feature/bootstrap --path clusters/dev
+git pull
+```
+
+`--private=false` because the repo is public; without it bootstrap assumes a
+private repo. Bootstrap installs the controllers into `flux-system`, commits
+`clusters/dev/flux-system/`, and creates a `GitRepository` and a `Kustomization`,
+both named `flux-system`, that sync `clusters/dev`. From here, anything committed
+under `clusters/dev/` gets applied.
+
+```sh
+flux get all -A
+flux events -A
+```
+
+### 2. First HelmRelease, exposed through the Gateway
+
+`clusters/dev/podinfo.yaml`:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: podinfo
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    semver: "6.x"
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 10m
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+  namespace: podinfo
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  parentRefs:
+    - name: web
+  rules:
+    - backendRefs:
+        - name: podinfo
+          port: 9898
+```
+
+```sh
+git add clusters/dev/podinfo.yaml && git commit -m "podinfo" && git push
+flux reconcile kustomization flux-system --with-source
+flux get helmreleases -A
+curl "http://$(kubectl -n podinfo get gateway web -o jsonpath='{.status.addresses[0].value}')"
+```
+
+Then change something in Git (`spec.values.replicaCount: 3`), push, and watch
+helm-controller roll it out. Delete the HTTPRoute with `kubectl` and the next
+reconcile puts it back. Deleting the Deployment doesn't, unless you set
+`spec.driftDetection.mode: enabled` on the HelmRelease. That's the Flux
+equivalent of Argo's self-heal for Helm charts.
+
+### 3. Make Flux own Cilium
+
+Add a `HelmRepository` for `https://helm.cilium.io` and a `HelmRelease` named
+`cilium` in `kube-system`, pinned to the same version as
+`overlays/local/bootstrap.sh`. Same name and namespace means helm-controller
+takes over the release bootstrap made instead of installing a second one.
+
+Values have to come from the HelmRelease itself: `valuesFrom` reads ConfigMaps
+and Secrets, not files in Git. Either inline both values files (base first, then
+local), or commit them as two ConfigMaps and list both under `valuesFrom` in
+that order. The ConfigMap route keeps one copy, but then `bootstrap.sh` has to
+read the same ConfigMaps.
+
+Leave `k8sServiceHost` in the values. If Flux drops it, Cilium loses the API
+server and the cluster's networking goes down.
+
+### Day 2
+
+```sh
+flux get kustomizations -A      # is the sync healthy?
+flux logs -A --level=error       # what failed?
+flux diff kustomization flux-system --path clusters/dev   # what would change?
+flux trace -n podinfo deployment podinfo                   # which Flux object owns this?
+flux suspend helmrelease cilium -n kube-system             # stop reconciling while you experiment
+flux resume helmrelease cilium -n kube-system
+```
+
+Starting over: rebuild the cluster, run `bootstrap.sh`, and run the same
+`flux bootstrap` command again. It reuses what's already in Git. `flux uninstall`
+removes Flux but leaves the deploy key in the GitHub repo settings.
+
 ## Registry
 
 - Persistent standalone k3d registry (created by the dotfiles, not the

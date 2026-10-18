@@ -31,10 +31,10 @@ Installs the Gateway API CRDs, then Cilium (Gateway API on), then the LB pool.
 
 ```sh
 flux check --pre
-export GITHUB_TOKEN=...   # fine-grained PAT, contents read/write on this repo
-flux bootstrap github --personal \
-  --owner=bourbonfgiles --repository=kube_local \
-  --branch=feature/bootstrap --path=clusters/dev
+export GITHUB_TOKEN=...   # fine-grained PAT on this repo: Administration + Contents read/write
+flux bootstrap github --context k3d-dev \
+  --owner bourbonfgiles --repository kube_local --personal --private=false \
+  --branch feature/bootstrap --path clusters/dev
 ```
 
 That commits `clusters/dev/flux-system/` to the branch. Its `kustomization.yaml`
@@ -51,3 +51,6 @@ Flux pulls from GitHub, not this checkout: push before expecting a change.
 To decide: a HelmRelease can't read `cilium/values.yaml` straight from Git
 (`valuesFrom` takes ConfigMaps or Secrets). Either inline the values or turn the
 two values files into ConfigMap manifests.
+
+The full walkthrough, including a first HelmRelease behind the Gateway, is in
+`kubernetes.md`.
