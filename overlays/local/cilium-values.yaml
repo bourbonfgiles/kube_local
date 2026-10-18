@@ -1,0 +1,21 @@
+# kube-proxy is disabled, so Cilium needs the API server address directly.
+k8sServiceHost: k3d-dev-serverlb
+k8sServicePort: 6443
+
+# Native routing would need pod CIDR routes on every node; k3d doesn't add them.
+routingMode: tunnel
+tunnelProtocol: vxlan
+
+# Stands in for a cloud load balancer. Inert until lb-ipam.yaml is applied.
+l2announcements:
+  enabled: true
+
+# k3d nodes don't propagate mounts, so an auto-mounted cgroup2 never reaches the
+# agent and socket-LB hooks miss every pod. Use the node's own cgroup root.
+cgroup:
+  autoMount:
+    enabled: false
+  hostRoot: /sys/fs/cgroup
+
+operator:
+  replicas: 1

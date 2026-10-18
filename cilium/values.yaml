@@ -1,0 +1,14 @@
+kubeProxyReplacement: true
+
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+bpf:
+  monitorAggregation: none
+
+gatewayAPI:
+  enabled: true
