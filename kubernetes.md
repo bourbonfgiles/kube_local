@@ -36,6 +36,8 @@ Kustomize is involved.
 | k3s pinned to 1.36 | A minor EKS offers in standard support (until Aug 2027). |
 | Rootful Podman | Cilium loads BPF programs; atomic Fedora disables unprivileged BPF. |
 | No host bpffs mount | Each node gets its own bpffs; a shared one would collide pinned maps. |
+| Fixed Podman network `k3d-dev` (bridge `k3d0`, `10.89.0.0/24`) | Created by dotfiles, so LB IPs and the host DNS route always point at the same place. |
+| API server on `127.0.0.1` | Not reachable from the LAN. Port 25565 (Minecraft) still is. |
 
 ## Networking: Cilium 1.20
 
@@ -64,6 +66,9 @@ Local overlay (`overlays/local/cilium-values.yaml`):
   `network is unreachable`). If you change this on a running cluster, rebuild
   it: Cilium reuses its pinned hooks across restarts.
 - `operator.replicas: 1`.
+- `ipam.mode: kubernetes`: pods get IPs from the per-node CIDRs k3s assigns
+  (`10.42.0.0/16`). Cilium's own default pool, `10.0.0.0/8`, overlaps the node
+  network.
 
 ## Bootstrap
 
@@ -93,7 +98,7 @@ work contexts, so nothing lands on the wrong cluster.
 | Cilium health | `cilium status --context k3d-dev` |
 | Live flows | `cilium hubble port-forward &` then `hubble observe -f` |
 | Hubble UI | `cilium hubble ui` |
-| Reach a LoadBalancer/Gateway | Its `10.89.0.2xx` address, straight from the host |
+| Reach a LoadBalancer/Gateway | Its `10.89.0.2xx` address, or its `*.kube.internal` name |
 
 ## Getting started with Flux
 
@@ -126,7 +131,7 @@ flux check --pre --context k3d-dev
 export GITHUB_TOKEN=...
 flux bootstrap github --context k3d-dev \
   --owner bourbonfgiles --repository kube_local --personal --private=false \
-  --branch feature/bootstrap --path clusters/dev
+  --branch master --path clusters/dev
 git pull
 ```
 
@@ -243,6 +248,67 @@ Starting over: rebuild the cluster, run `bootstrap.sh`, and run the same
 `flux bootstrap` command again. It reuses what's already in Git. `flux uninstall`
 removes Flux but leaves the deploy key in the GitHub repo settings.
 
+## DNS: ExternalDNS writing to a local zone
+
+On EKS, ExternalDNS watches Services and Gateway API routes and writes Route53
+records. Here it does the same against BIND, which serves `kube.internal` on
+`10.89.0.250`. ExternalDNS sends RFC2136 updates signed with a TSIG key; unsigned
+updates are refused.
+
+| Piece | Where | Local only? |
+| --- | --- | --- |
+| ExternalDNS sources, `sync` policy, TXT registry | `external-dns/values.yaml` | No |
+| RFC2136 provider, zone, TSIG | `overlays/local/external-dns-values.yaml` | Yes (Route53 + IRSA on EKS) |
+| BIND (the "Route53") | `overlays/local/dns/bind.yaml` | Yes |
+| TSIG key | `overlays/local/dns/tsig-secret.sh` creates it; never in Git | Yes |
+| Pods resolve `kube.internal` | `overlays/local/dns/coredns-custom.yaml` | Yes |
+| Host resolves `kube.internal` | dotfiles `dotfiles-kube-dns.service` (Linux) | Yes |
+
+Install by hand for now (or as your second and third Flux HelmReleases):
+
+```sh
+./overlays/local/dns/tsig-secret.sh
+kubectl apply -f overlays/local/dns/bind.yaml -f overlays/local/dns/coredns-custom.yaml
+helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+helm upgrade --install external-dns external-dns/external-dns \
+  --kube-context k3d-dev -n external-dns --version 1.23.0 \
+  -f external-dns/values.yaml -f overlays/local/external-dns-values.yaml
+```
+
+Then give any HTTPRoute a hostname:
+
+```yaml
+spec:
+  hostnames:
+    - shop.kube.internal
+```
+
+Within a minute ExternalDNS writes `shop.kube.internal A <gateway IP>` and a TXT
+ownership record. Delete the route and the record goes too (`policy: sync`).
+
+```sh
+dig @10.89.0.250 shop.kube.internal              # straight at BIND
+dig @10.89.0.250 kube.internal AXFR -y hmac-sha256:externaldns:$(kubectl -n dns get secret externaldns-tsig -o jsonpath='{.data.secret}' | base64 -d)
+curl http://shop.kube.internal/                  # once the host route is installed
+```
+
+Host resolution on Linux: run the dotfiles k8s step once
+(`uv run python -m dotfiles --only k8s`). It installs a systemd unit that, whenever
+the `k3d0` bridge exists, tells systemd-resolved to send `*.kube.internal` to
+`10.89.0.250` over that link, without DNS-over-TLS or DNSSEC. Everything else
+keeps using your normal resolvers. macOS can't reach the Podman VM's bridge IPs,
+so there you'd use `kubectl port-forward` instead.
+
+Notes:
+
+- The ExternalDNS RFC2136 host is `bind.dns.svc.cluster.local.` with a trailing
+  dot. Without it, Go's resolver walks the pod's five search domains first and
+  the zone transfer times out.
+- BIND keeps the zone in an `emptyDir`. A restart loses the records and
+  ExternalDNS rewrites them on its next sync.
+- For the EKS version, swap the overlay for `provider.name: aws` and an IRSA role.
+  The base values don't change.
+
 ## Registry
 
 - Persistent standalone k3d registry (created by the dotfiles, not the
@@ -258,7 +324,8 @@ Handled later via GitOps, not emulated in the cluster itself:
 
 - **IRSA / Pod Identity**: no AWS IAM locally; use static creds or the Pod
   Identity webhook when needed.
-- **external-dns**: LocalStack Route53, so the provider config matches EKS.
+- **Route53**: BIND over RFC2136 instead (see DNS). LocalStack's Route53 DNS
+  answering needs a LocalStack account plan, so it was ruled out.
 - **Storage**: a local-path StorageClass aliased `gp3` with
   `WaitForFirstConsumer`; no real EBS.
 - **Karpenter**: the KWOK provider; its AWS `EC2NodeClass` fields don't apply.

@@ -1,0 +1,13 @@
+# k3s's CoreDNS imports extra server blocks from this ConfigMap, so pods resolve
+# kube.internal the same way the host does.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  kube-internal.server: |
+    kube.internal:53 {
+      forward . 10.89.0.250
+      cache 30
+    }
