@@ -19,3 +19,8 @@ cgroup:
 
 operator:
   replicas: 1
+
+# Use the pod CIDR k3s assigns each node (10.42.0.0/16). Cilium's own default
+# pool, 10.0.0.0/8, overlaps the node network.
+ipam:
+  mode: kubernetes

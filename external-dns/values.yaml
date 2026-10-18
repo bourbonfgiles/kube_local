@@ -1,0 +1,8 @@
+sources:
+  - service
+  - gateway-httproute
+  - gateway-grpcroute
+
+policy: sync
+registry: txt
+triggerLoopOnEvent: true

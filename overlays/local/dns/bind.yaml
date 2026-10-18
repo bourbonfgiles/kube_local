@@ -1,0 +1,98 @@
+# Authoritative DNS for kube.internal, standing in for Route53. ExternalDNS
+# writes records with RFC2136 updates signed by the TSIG key in the
+# "externaldns-tsig" Secret (see kubernetes.md; it's not stored in Git).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dns
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bind
+  namespace: dns
+data:
+  named.conf: |
+    include "/etc/bind/tsig/tsig.key";
+
+    options {
+      directory "/var/cache/bind";
+      listen-on { any; };
+      listen-on-v6 { none; };
+      recursion no;
+      dnssec-validation no;
+      allow-query { any; };
+    };
+
+    zone "kube.internal" {
+      type primary;
+      file "/var/lib/bind/kube.internal.zone";
+      update-policy { grant externaldns zonesub ANY; };
+      allow-transfer { key externaldns; };
+    };
+  kube.internal.zone: |
+    $TTL 60
+    @   IN SOA ns.kube.internal. admin.kube.internal. ( 1 3600 600 86400 60 )
+        IN NS  ns.kube.internal.
+    ns  IN A   10.89.0.250
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bind
+  namespace: dns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bind
+  template:
+    metadata:
+      labels:
+        app: bind
+    spec:
+      # The zone is rebuilt by ExternalDNS on every sync, so it can live in an
+      # emptyDir; the seed file only needs the SOA and NS records.
+      initContainers:
+        - name: seed-zone
+          image: docker.io/internetsystemsconsortium/bind9:9.20
+          command: ["sh", "-c", "cp /config/kube.internal.zone /var/lib/bind/ && chown bind:bind /var/lib/bind/kube.internal.zone"]
+          volumeMounts:
+            - { name: config, mountPath: /config }
+            - { name: zones, mountPath: /var/lib/bind }
+      containers:
+        - name: bind
+          image: docker.io/internetsystemsconsortium/bind9:9.20
+          args: ["-u", "bind", "-g", "-c", "/etc/bind/named.conf"]
+          command: ["/usr/sbin/named"]
+          ports:
+            - { name: dns-udp, containerPort: 53, protocol: UDP }
+            - { name: dns-tcp, containerPort: 53, protocol: TCP }
+          readinessProbe:
+            tcpSocket: { port: 53 }
+          volumeMounts:
+            - { name: config, mountPath: /etc/bind/named.conf, subPath: named.conf }
+            - { name: tsig, mountPath: /etc/bind/tsig }
+            - { name: zones, mountPath: /var/lib/bind }
+      volumes:
+        - name: config
+          configMap: { name: bind }
+        - name: tsig
+          secret: { secretName: externaldns-tsig }
+        - name: zones
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bind
+  namespace: dns
+  annotations:
+    lbipam.cilium.io/ips: 10.89.0.250
+spec:
+  type: LoadBalancer
+  selector:
+    app: bind
+  ports:
+    - { name: dns-udp, port: 53, protocol: UDP }
+    - { name: dns-tcp, port: 53, protocol: TCP }
