@@ -330,8 +330,9 @@ so there you'd use `kubectl port-forward` instead.
 Notes:
 
 - The ExternalDNS RFC2136 host is `bind.dns.svc.cluster.local.` with a trailing
-  dot. Without it, Go's resolver walks the pod's five search domains first and
-  the zone transfer times out.
+  dot, so the lookup skips the pod's search list. Pods used to inherit the
+  host's LAN search domain (`fritz.box`), and that lookup stalled. The dotfiles
+  k3d config now gives kubelet a clean resolv.conf; the dot just keeps it fast.
 - BIND keeps the zone in an `emptyDir`. A restart loses the records and
   ExternalDNS rewrites them on its next sync.
 - For the EKS version, swap the overlay for `provider.name: aws` and an IRSA role.
