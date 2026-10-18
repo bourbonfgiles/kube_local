@@ -1,4 +1,0 @@
-# k3d maps host port 25565 to NodePort 30000 on the server load balancer.
-minecraftServer:
-  serviceType: NodePort
-  nodePort: 30000
