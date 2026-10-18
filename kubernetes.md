@@ -131,12 +131,17 @@ flux check --pre --context k3d-dev
 export GITHUB_TOKEN=...
 flux bootstrap github --context k3d-dev \
   --owner bourbonfgiles --repository kube_local --personal --private=false \
-  --branch master --path clusters/dev
+  --branch master --path clusters/dev \
+  --components-extra image-reflector-controller,image-automation-controller \
+  --read-write-key
 git pull
 ```
 
 `--private=false` because the repo is public; without it bootstrap assumes a
-private repo. Bootstrap installs the controllers into `flux-system`, commits
+private repo. The last two flags are for image promotion later: the image
+controllers watch registries, and image automation commits tag bumps back to
+Git, which needs a deploy key with write access. Adding them now saves a second
+bootstrap. Bootstrap installs the controllers into `flux-system`, commits
 `clusters/dev/flux-system/`, and creates a `GitRepository` and a `Kustomization`,
 both named `flux-system`, that sync `clusters/dev`. From here, anything committed
 under `clusters/dev/` gets applied.
@@ -179,18 +184,6 @@ spec:
     name: podinfo
 ---
 apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: web
-  namespace: podinfo
-spec:
-  gatewayClassName: cilium
-  listeners:
-    - name: http
-      protocol: HTTP
-      port: 80
----
-apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: podinfo
@@ -198,6 +191,9 @@ metadata:
 spec:
   parentRefs:
     - name: web
+      namespace: gateway
+  hostnames:
+    - podinfo.kube.internal
   rules:
     - backendRefs:
         - name: podinfo
@@ -208,8 +204,11 @@ spec:
 git add clusters/dev/podinfo.yaml && git commit -m "podinfo" && git push
 flux reconcile kustomization flux-system --with-source
 flux get helmreleases -A
-curl "http://$(kubectl -n podinfo get gateway web -o jsonpath='{.status.addresses[0].value}')"
+curl http://podinfo.kube.internal/
 ```
+
+The route attaches to the shared Gateway (see Shared Gateway below), and
+ExternalDNS publishes the hostname, so this exercises the whole platform.
 
 Then change something in Git (`spec.values.replicaCount: 3`), push, and watch
 helm-controller roll it out. Delete the HTTPRoute with `kubectl` and the next
@@ -232,6 +231,35 @@ read the same ConfigMaps.
 
 Leave `k8sServiceHost` in the values. If Flux drops it, Cilium loses the API
 server and the cluster's networking goes down.
+
+### 4. Move the rest over, in dependency order
+
+1. `gateway/gateway.yaml`: plain manifests, so a `Kustomization` pointing at
+   `./gateway` is enough.
+2. DNS: a `Kustomization` for `./overlays/local/dns` and a `HelmRelease` for
+   ExternalDNS (both values files, base first). Run `tsig-secret.sh` once by hand
+   beforehand. Flux deliberately doesn't create that Secret; encrypting it with
+   SOPS so it can live in Git is a good later exercise.
+3. Apps: a `HelmRelease` each for Online Boutique and Minecraft, plus the
+   boutique route. Use `dependsOn` so they wait for DNS and the Gateway.
+
+Once Flux owns something, change it through Git only. A manual `helm upgrade`
+just gets reverted on the next reconcile.
+
+### 5. Image promotion (later)
+
+The pieces are already in place: a registry pods can reach at
+`k3d-registry.localhost:5000` (plain HTTP, so set `spec.insecure: true` on the
+`ImageRepository`), and the image controllers from bootstrap. The loop:
+
+1. Build and push `localhost:5050/<app>:1.0.0` from the host.
+2. `ImageRepository` scans `k3d-registry.localhost:5000/<app>`.
+3. `ImagePolicy` picks the newest tag matching a semver range.
+4. `ImageUpdateAutomation` commits the new tag into the HelmRelease values,
+   wherever a `# {"$imagepolicy": "<ns>:<policy>"}` marker comment sits.
+
+To promote between environments, point a second policy (say `prod`) at a
+stricter range, or at tags you only push after testing.
 
 ### Day 2
 
