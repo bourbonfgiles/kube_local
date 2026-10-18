@@ -1,28 +1,37 @@
 # kube_local
 
-Bootstrap for the local k3d `dev` cluster created by the dotfiles k3d config.
+GitOps for the local k3d `dev` cluster created by the dotfiles k3d config.
 
 The cluster boots **CNI-less** (flannel and kube-proxy disabled), so nodes start
-`NotReady`. That is deliberate: it mirrors a naked managed cluster where you own
-everything above the control plane.
+`NotReady` — the same clean slate a managed cluster gives you before add-ons.
+
+## Layout
+
+```
+bootstrap.sh            One-time imperative step: Cilium + flux bootstrap.
+clusters/dev/           Flux entrypoint for this cluster.
+infrastructure/
+  cilium/               CNI: HelmRelease, shared values, LB-IPAM.
+```
 
 ## Order
 
-1. Create the cluster (from dotfiles): `k3d cluster create --config ~/.config/k3d/config.yaml`
-2. Run the bootstrap: `./bootstrap.sh`
-   - installs **Cilium** (nodes go Ready) — with kube-proxy replacement and
-     Hubble enabled for BPF/tracing work
-   - runs **`flux bootstrap`** — Flux takes over from Git
-3. Everything else is declared in Git under `clusters/dev/` and reconciled by
-   Flux. Nothing else is installed imperatively.
+1. Create the cluster (dotfiles): `k3d cluster create --config ~/.config/k3d/config.yaml`
+2. Export `GITHUB_USER` and `GITHUB_TOKEN`, then `./bootstrap.sh`:
+   - installs **Cilium** from `infrastructure/cilium/values.yaml` (nodes go Ready)
+   - runs **`flux bootstrap`**, which adopts Cilium and reconciles the rest
+3. Add infrastructure and apps under `infrastructure/` and `apps/`; Flux applies them.
 
-## Prerequisites
+## Why Cilium is installed twice (helm then Flux)
 
-- `cilium` CLI, `flux` CLI, `kubectl` (all in the dotfiles brewfile)
-- `GITHUB_USER` and `GITHUB_TOKEN` exported for `flux bootstrap`
+Flux is pods and pods need a CNI, so Cilium cannot be installed by Flux. The
+bootstrap helm-installs it with the **same chart and values** the Flux
+HelmRelease declares, so Flux adopts the existing release rather than fighting
+it. The values file is the single source of truth for both.
 
-## Why only two things here
+## Cilium notes
 
-Cilium and Flux are the chicken-and-egg: Flux is pods, pods need a CNI, so the
-CNI cannot be installed *by* Flux. These two are the minimum imperative step;
-GitOps owns the rest.
+- `kubeProxyReplacement: true` and `k8sServiceHost: k3d-dev-serverlb` are
+  required: kube-proxy is disabled, so Cilium needs the API server address.
+- LB-IPAM + L2 announcements give `type: LoadBalancer` services real IPs, the
+  realistic way to expose TCP (e.g. a Minecraft service) rather than a NodePort.

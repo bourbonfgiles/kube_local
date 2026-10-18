@@ -1,43 +1,33 @@
 #!/usr/bin/env bash
-# Bootstrap a freshly created k3d "dev" cluster.
+# One-time imperative bootstrap for the CNI-less k3d "dev" cluster.
 #
-# The cluster is created CNI-less on purpose (flannel and kube-proxy are
-# disabled in the k3d config), so it comes up with every node NotReady. This
-# script installs the two things that must exist before GitOps can take over:
+# The cluster boots with no CNI (flannel + kube-proxy disabled), so nodes are
+# NotReady until Cilium is installed. Cilium and Flux cannot be installed BY
+# Flux (Flux is pods; pods need a CNI), so they go on here. Everything else is
+# declared in Git and reconciled by Flux.
 #
-#   1. Cilium  - the CNI. Nodes go Ready once it is running.
-#   2. Flux    - reconciles this repo from here on.
-#
-# Everything else (cert-manager, external-dns, apps, ...) is NOT here; it lives
-# in Git and is installed by Flux. This script is the only imperative step,
-# mirroring how a managed cluster hands you a control plane + CNI add-on and
-# you declare the rest.
+# Cilium is installed with the same chart and values that the Flux HelmRelease
+# uses (infrastructure/cilium), so Flux adopts this release instead of fighting
+# it.
 set -euo pipefail
 
-CLUSTER="dev"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CILIUM_DIR="${REPO_ROOT}/infrastructure/cilium"
+CILIUM_VERSION="1.18.1"
 
-# --- 1. Cilium ---------------------------------------------------------------
-# kube-proxy is disabled, so Cilium must replace it AND be told how to reach the
-# API server directly (there is no kube-proxy to route through). On k3d the API
-# server is reachable at the server load balancer inside the Docker network.
-K8S_SERVICE_HOST="k3d-${CLUSTER}-server-0"
-K8S_SERVICE_PORT="6443"
+helm repo add cilium https://helm.cilium.io >/dev/null
+helm repo update cilium >/dev/null
 
-cilium install \
-  --set kubeProxyReplacement=true \
-  --set k8sServiceHost="${K8S_SERVICE_HOST}" \
-  --set k8sServicePort="${K8S_SERVICE_PORT}" \
-  --set hubble.enabled=true \
-  --set hubble.relay.enabled=true \
-  --set hubble.ui.enabled=true \
-  --set bpf.monitorAggregation=none \
-  --set debug.enabled=true
+helm install cilium cilium/cilium \
+  --version "${CILIUM_VERSION}" \
+  --namespace kube-system \
+  --values "${CILIUM_DIR}/values.yaml"
 
 cilium status --wait
+kubectl apply -f "${CILIUM_DIR}/lb-ipam.yaml"
 
-# --- 2. Flux -----------------------------------------------------------------
-# Needs a GitHub token in GITHUB_TOKEN (and GITHUB_USER). flux bootstrap writes
-# its own manifests into this repo under clusters/dev/ and starts reconciling.
+# Needs GITHUB_USER and GITHUB_TOKEN. Writes Flux manifests to clusters/dev and
+# starts reconciling; Flux then owns Cilium via the HelmRelease.
 flux bootstrap github \
   --owner="${GITHUB_USER}" \
   --repository=kube_local \
@@ -45,4 +35,4 @@ flux bootstrap github \
   --path=clusters/dev \
   --personal
 
-echo "Bootstrap complete. Flux now reconciles clusters/dev from Git."
+echo "Bootstrap complete. Flux reconciles clusters/dev from Git."
