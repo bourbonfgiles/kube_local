@@ -16,6 +16,8 @@ overlays/local/               Everything that only exists because this is k3d.
   dns/bind.yaml               BIND serving kube.internal (stand-in for Route53).
   dns/tsig-secret.sh          TSIG key BIND accepts updates with. Never in Git.
   dns/coredns-custom.yaml     Pods resolve kube.internal through BIND.
+docs/                         Lessons: what to install next, by hand then with Flux.
+scratch/                      Your by-hand experiments from the lessons. Ignored by Git.
 ```
 
 Helm merges `cilium/values.yaml` then `overlays/local/cilium-values.yaml`. No

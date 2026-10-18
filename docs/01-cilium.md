@@ -1,130 +1,298 @@
-# 1. Cilium and Gateway API by hand
+# 1. Cilium and Gateway API
 
-Learn Gateway API and Hubble with `helm` and `kubectl` before GitOps hides the
-moving parts. The Gateway files you write here stay on disk and become Flux's
-first objects in lesson 2; everything else is deleted at the end.
+> You end up with: a Gateway on `10.89.0.200`, routes splitting traffic
+> between two podinfo releases by path, header and weight, and Hubble showing
+> every request.
 
-EKS equivalent: Cilium as the CNI on EKS, or the AWS Load Balancer Controller
-reading Gateway API objects.
+## What it is
 
-## Before you start
+### Cilium
 
-On your machine: `kubectl`, `helm`, `cilium`, `hubble`, `k9s`, `curl`.
+Cilium is the cluster's CNI: it gives every pod an address and moves packets
+between them. It does it with eBPF programs loaded into the kernel on each
+node, rather than iptables rules. In this cluster it also replaces three
+things k3s would normally run:
 
-In the cluster:
+| Job | Usually done by | Here |
+| --- | --- | --- |
+| Pod networking | flannel | Cilium, vxlan tunnel between nodes |
+| ClusterIP Services | kube-proxy (iptables) | Cilium's eBPF service map |
+| `type: LoadBalancer` | A cloud LB, or k3s servicelb | Cilium LB-IPAM hands out `10.89.0.200-250`; L2 announcements answer ARP for them |
+| Ingress / Gateway | Traefik | Cilium's Gateway API, using an Envoy proxy it runs on each node |
+
+`bootstrap.sh` installed all of this. This lesson is about using it.
+
+### Gateway API
+
+The successor to `Ingress`. It splits one object into three, so each team
+owns its part:
+
+| Kind | Who owns it | Says |
+| --- | --- | --- |
+| `GatewayClass` | Whoever installs the implementation | "Gateways of class `cilium` are run by Cilium." Already exists. |
+| `Gateway` | The platform team | "Listen on port 80 at one address, and accept routes from these namespaces." |
+| `HTTPRoute` | The app team | "For host `demo.kube.internal`, send `/green` to this Service, everything else to that one." |
+
+```mermaid
+flowchart LR
+  client["curl on your machine"] --> ip["10.89.0.200<br/>LoadBalancer Service"]
+  ip --> gw["Gateway web<br/>Envoy, listener :80"]
+  gw --> route["HTTPRoute demo<br/>host + path + header rules"]
+  route -->|"/ (90%)"| blue["Service blue-podinfo"]
+  route -->|"/green, x-colour, 10%"| green["Service green-podinfo"]
+```
+
+A route attaches to a Gateway with `parentRefs`. The Gateway decides whether
+to accept it (`allowedRoutes`), and both objects report the result in their
+`status`. When something doesn't work, the status says why.
+
+### Hubble
+
+Hubble reads the same eBPF datapath and shows every flow: who talked to whom,
+on what port, whether it was forwarded or dropped, and for HTTP, the method,
+path and status code.
+
+## On EKS
+
+Cilium can be the CNI on EKS in place of the AWS VPC CNI, with the same Gateway
+API. More commonly the AWS Load Balancer Controller implements Gateway API with
+an ALB. The `Gateway` and `HTTPRoute` objects are the same either way; only the
+`gatewayClassName` changes.
+
+## Requirements
+
+**In the cluster**
 
 - `cilium --context k3d-dev status` is all green.
 - k9s `:gatewayclasses` shows `cilium` with `ACCEPTED True`.
 
-## Objects
+**On your machine**: `kubectl`, `helm`, `cilium`, `hubble`, `k9s`, `curl`.
 
-| Kind | File | Kept |
-| --- | --- | --- |
-| Namespace `gateway` | `infrastructure/base/gateway/namespace.yaml` | Yes, lesson 2 |
-| Gateway `web` | `infrastructure/base/gateway/gateway.yaml` | Yes, lesson 2 |
-| Helm releases `blue`, `green` (podinfo) in `demo` | none, `helm install` | No |
-| HTTPRoute `demo` in `demo` | `demo/route.yaml` | No, delete the folder |
+## Look around first
 
-## Tasks
+What `bootstrap.sh` turned on:
 
-1. Look around:
-   ```sh
-   cilium --context k3d-dev config view | grep -iE 'gateway|kube-proxy|l2'
-   ```
-   In k9s, `:pods -n kube-system`, pick a `cilium-` pod, `s` for a shell, and:
-   ```sh
-   # in the pod shell
-   cilium-dbg service list
-   ```
-   That table is what kube-proxy would otherwise do in iptables.
-2. Hubble. In one terminal, `cilium --context k3d-dev hubble port-forward`;
-   in another, `hubble observe -f`. `cilium --context k3d-dev hubble ui` opens
-   the graph.
-3. Two podinfo releases, so you have two backends to route between:
-   ```sh
-   helm --kube-context k3d-dev install blue oci://ghcr.io/stefanprodan/charts/podinfo \
-     --version 6.7.1 -n demo --create-namespace --set ui.message=blue
-   helm --kube-context k3d-dev install green oci://ghcr.io/stefanprodan/charts/podinfo \
-     --version 6.7.1 -n demo --set ui.message=green
-   ```
-4. The Gateway. Write both files, then
-   `kubectl --context k3d-dev apply -f infrastructure/base/gateway/`:
-   ```yaml
-   # infrastructure/base/gateway/namespace.yaml
-   apiVersion: v1
-   kind: Namespace
-   metadata:
-     name: gateway
-   ```
-   ```yaml
-   # infrastructure/base/gateway/gateway.yaml
-   apiVersion: gateway.networking.k8s.io/v1
-   kind: Gateway
-   metadata:
-     name: web
-     namespace: gateway
-   spec:
-     gatewayClassName: cilium
-     listeners:
-       - name: http
-         protocol: HTTP
-         port: 80
-         allowedRoutes:
-           namespaces:
-             from: All
-   ```
-5. k9s `:gateways` until `PROGRAMMED True` with an address (usually
-   `10.89.0.200`). `:svc -n gateway` shows the LoadBalancer Service Cilium
-   made for it.
-6. A route to `blue`, then `kubectl --context k3d-dev apply -f demo/route.yaml`:
-   ```yaml
-   # demo/route.yaml
-   apiVersion: gateway.networking.k8s.io/v1
-   kind: HTTPRoute
-   metadata:
-     name: demo
-     namespace: demo
-   spec:
-     parentRefs:
-       - name: web
-         namespace: gateway
-     hostnames: [demo.kube.internal]
-     rules:
-       - backendRefs:
-           - name: blue-podinfo
-             port: 9898
-   ```
-   `curl -H 'Host: demo.kube.internal' http://10.89.0.200/`.
-7. Edit the file and re-apply after each step: a rule for `/green` to
-   `green-podinfo` (with a `URLRewrite` filter so podinfo sees `/`), a header
-   match `x-colour: green`, then a 90/10 split with `weight` on two
-   `backendRefs`.
-8. Watch the requests in Hubble. The source is `(ingress)`, Cilium's Envoy.
-9. Clean up:
-   ```sh
-   kubectl --context k3d-dev delete -f demo/route.yaml -f infrastructure/base/gateway/gateway.yaml
-   helm --kube-context k3d-dev uninstall -n demo blue green
-   kubectl --context k3d-dev delete namespace demo gateway
-   rm -r demo
-   ```
-   Keep `infrastructure/base/gateway/` for lesson 2.
+```sh
+cilium --context k3d-dev config view | grep -iE 'gateway|kube-proxy|l2'
+```
 
-## Done when
+The Service table that replaces kube-proxy. In k9s, `:pods -n kube-system`,
+pick a `cilium-` pod (not the operator), `s`:
 
-- You can predict which backend a request hits from its path and headers.
-- `d` on the route in k9s shows `Accepted` and `ResolvedRefs`, and you know
-  what each means.
+```sh
+# in the pod shell
+cilium-dbg service list
+```
+
+Each ClusterIP and its backends, in an eBPF map instead of iptables.
+
+Hubble needs two terminals:
+
+```sh
+cilium --context k3d-dev hubble port-forward     # terminal 1, leave running
+hubble observe -f                                 # terminal 2
+```
+
+`cilium --context k3d-dev hubble ui` opens the service map in a browser.
+
+## Install by hand
+
+Everything here lives in `scratch/01/`. The Gateway files are reused in
+lesson 2.
+
+### 1. Two backends
+
+podinfo is a small web app whose page shows a message, so you can tell which
+release answered:
+
+```sh
+helm --kube-context k3d-dev install blue oci://ghcr.io/stefanprodan/charts/podinfo \
+  --version 6.7.1 -n demo --create-namespace --set ui.message=blue
+helm --kube-context k3d-dev install green oci://ghcr.io/stefanprodan/charts/podinfo \
+  --version 6.7.1 -n demo --set ui.message=green
+```
+
+k9s `:svc -n demo` shows `blue-podinfo` and `green-podinfo` on port 9898.
+
+### 2. A Gateway
+
+```yaml
+# scratch/01/gateway.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+  namespace: gateway
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/01/gateway.yaml
+```
+
+k9s `:gateways -A` until `PROGRAMMED True` with an address, usually
+`10.89.0.200`. `:svc -n gateway` shows the LoadBalancer Service Cilium created
+for it.
+
+### 3. A route, one step at a time
+
+Start with everything to `blue`:
+
+```yaml
+# scratch/01/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [demo.kube.internal]
+  rules:
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/01/route.yaml
+curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/ | jq .message
+```
+
+Then replace `rules:` with each of these in turn, re-apply, and predict the
+answer before you `curl`:
+
+<details>
+<summary>Path: <code>/green</code> to green, rewritten to <code>/</code></summary>
+
+```yaml
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /green
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
+```
+
+`curl -H 'Host: demo.kube.internal' http://10.89.0.200/green`. Without the
+filter, podinfo gets `/green`, which it doesn't serve.
+
+</details>
+
+<details>
+<summary>Header: <code>x-colour: green</code> to green</summary>
+
+Add this rule above the catch-all:
+
+```yaml
+    - matches:
+        - headers:
+            - name: x-colour
+              value: green
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
+```
+
+`curl -H 'Host: demo.kube.internal' -H 'x-colour: green' http://10.89.0.200/`
+
+</details>
+
+<details>
+<summary>Weights: 90/10 split</summary>
+
+Make the catch-all:
+
+```yaml
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
+          weight: 90
+        - name: green-podinfo
+          port: 9898
+          weight: 10
+```
+
+```sh
+for i in $(seq 50); do
+  curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/ | jq -r .message
+done | sort | uniq -c
+```
+
+</details>
+
+Watch the requests in `hubble observe -f`. The source shows as `(ingress)`:
+that's Cilium's Envoy, not your machine.
+
+### 4. Clean up
+
+```sh
+kubectl --context k3d-dev delete -f scratch/01/route.yaml -f scratch/01/gateway.yaml
+helm --kube-context k3d-dev uninstall -n demo blue green
+kubectl --context k3d-dev delete namespace demo
+```
+
+Keep `scratch/01/gateway.yaml`: it becomes Flux's first object in lesson 2.
+
+## Install with Flux
+
+Not yet: [lesson 2](02-flux.md) installs Flux and puts this Gateway in Git.
+
+## Exercises
+
+1. Explain each condition on the route (`d` in k9s): `Accepted` and
+   `ResolvedRefs`.
+2. Break it on purpose: set the route's `parentRefs` namespace to `default`.
+   `curl` gets a 404; find the reason in the route's status.
+3. Change the Gateway's `allowedRoutes` to `from: Same`. Which status changes,
+   the Gateway's or the route's?
+4. Filter Hubble to one backend:
+   `hubble observe -f --to-namespace demo --protocol http`.
+5. Point a route in `demo` at a Service in another namespace. It fails with
+   `RefNotPermitted` until a `ReferenceGrant` in the target namespace allows
+   it.
+6. Harder: add a `CiliumNetworkPolicy` that only allows traffic to
+   `blue-podinfo` from its own namespace. The route now returns 503, and
+   Hubble shows no drop. Allow `fromEntities: [ingress]` to fix it, and work
+   out why a plain `NetworkPolicy` can't.
 
 ## Where it gets hard
 
-- A route that doesn't attach shows nothing in `curl`; the reason is in the
-  route's status. Usual causes: wrong Gateway namespace in `parentRefs`, or
-  the listener's `allowedRoutes` excluding the route's namespace.
-- A `ReferenceGrant` is needed when a route points at a Service in another
-  namespace.
+- A route that doesn't attach shows nothing in `curl`, only a 404. The reason
+  is always in the route's status.
 - `curl` without the `Host` header gets a 404 from Envoy: no route matches.
-- The podinfo Service is `<release>-podinfo`, so `blue-podinfo`. Check
-  `:svc -n demo` if a backend shows `ResolvedRefs False`.
+- Rule precedence isn't file order. The longest path match wins, then the
+  rule with the most header matches. Two rules matching the same request is
+  legal and confusing.
+- Cilium only enables Gateway API if its CRDs existed when the operator
+  started. If `:gatewayclasses` is empty, see the repo README's
+  Troubleshooting table.
 
 ## Links
 
