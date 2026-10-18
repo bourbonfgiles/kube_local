@@ -7,7 +7,7 @@ EKS equivalent: the same chart, or Amazon Managed Prometheus and Grafana.
 
 ## Before you start
 
-- Flux, with Cilium adopted (end of step 2): Cilium's metrics are switched on
+- Flux, with Cilium adopted (end of lesson 2): Cilium's metrics are switched on
   through its values.
 - Roughly 2 GB of spare memory.
 

@@ -1,11 +1,11 @@
-# 12. App: Minecraft (Java)
+# 13. Minecraft (Java)
 
 A real JVM workload you can join from a game client, and a good subject for the
 BPF Performance Tools book.
 
 ## Before you start
 
-- Flux (step 2). About 3 GB of spare memory.
+- Flux (lesson 2). About 3 GB of spare memory.
 - Host port 25565 is already mapped to NodePort 30000 (dotfiles k3d config).
 
 ## Tasks
@@ -40,7 +40,7 @@ BPF Performance Tools book.
 7. Java frames show as hex until you add a perf map agent; the book's Java
    chapter covers it.
 8. Lower the memory limit below the heap and watch the OOM kill in
-   `kubectl describe pod` and `oomkill` from BCC.
+   k9s (`d` on the pod) and `oomkill` from BCC.
 
 ## Done when
 
