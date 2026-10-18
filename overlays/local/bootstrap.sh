@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs the CNI into the CNI-less k3d cluster so nodes go Ready.
+# Takes the CNI-less k3d cluster to ready: Cilium, LB pool, and BIND for kube.internal.
 set -euo pipefail
 
 CLUSTER="${1:-dev}"
@@ -29,3 +29,6 @@ helm upgrade --install cilium cilium/cilium \
 cilium status --context "${CONTEXT}" --wait --wait-duration 10m
 kubectl --context "${CONTEXT}" wait --for=condition=Ready nodes --all --timeout=5m
 kubectl --context "${CONTEXT}" apply -f "${HERE}/lb-ipam.yaml"
+
+"${HERE}/dns/tsig-secret.sh" "${CLUSTER}"
+kubectl --context "${CONTEXT}" apply -f "${HERE}/dns/bind.yaml" -f "${HERE}/dns/coredns-custom.yaml"

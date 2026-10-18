@@ -1,7 +1,0 @@
-# Reached through the shared Gateway (route.yaml) rather than its own LoadBalancer.
-frontend:
-  externalService: false
-
-# Flip on to practise: Cilium enforces these NetworkPolicies.
-networkPolicies:
-  create: false
