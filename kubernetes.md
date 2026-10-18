@@ -14,6 +14,40 @@ everything installed onto it lives here.
 - A clean handoff: the bootstrap stops once networking works. Whatever GitOps
   tool comes next (Flux now, maybe Argo CD later) takes over from there.
 
+## How the two repos fit
+
+```mermaid
+flowchart LR
+  subgraph dotfiles["dotfiles: host + empty cluster"]
+    sock["Rootful Podman socket"] --> net["Network k3d-dev<br/>10.89.0.0/24, bridge k3d0"]
+    net --> reg["Registry<br/>localhost:5050"]
+    net --> k3d["k3d cluster dev<br/>1 server + 3 agents<br/>no CNI"]
+    hostdns["Host DNS rule<br/>*.kube.internal to 10.89.0.250"]
+  end
+  subgraph kube_local["kube_local: platform"]
+    boot["overlays/local/bootstrap.sh"] --> crds["Gateway API CRDs"] --> cilium["Cilium"] --> pool["LB pool<br/>10.89.0.200-250"] --> bind["BIND kube.internal<br/>10.89.0.250"]
+  end
+  subgraph gitops["You, via Flux"]
+    flux["flux bootstrap"] --> apps["Gateway, routes,<br/>ExternalDNS, apps"]
+  end
+  k3d -->|"context k3d-dev"| boot
+  hostdns -.->|"resolves via"| bind
+  bind --> flux
+  flux -->|"pulls"| gh["GitHub kube_local master"]
+```
+
+The repos don't call each other. They agree on these values, so change both
+sides together. The dotfiles side is in its own `kubernetes.md`.
+
+| Value | dotfiles | kube_local |
+| --- | --- | --- |
+| Cluster `dev`, context `k3d-dev` | `home/dot_config/k3d/config.yaml` | `bootstrap.sh` default argument |
+| API endpoint `k3d-dev-serverlb:6443` | k3d's load balancer | `k8sServiceHost` in `overlays/local/cilium-values.yaml` |
+| Network `10.89.0.0/24` | `_CLUSTER_SUBNET` in `services/k8s.py` | LB pool in `overlays/local/lb-ipam.yaml` |
+| DNS `10.89.0.250`, zone `kube.internal` | `_KUBE_DNS_SERVER`, `_KUBE_DNS_DOMAIN` | `overlays/local/dns/bind.yaml` |
+| flannel, kube-proxy, servicelb, traefik, network policy off | k3s args | Cilium replaces all of them |
+| Registry `k3d-registry.localhost:5000` | created by `services/k8s.py` | image references, Flux image automation |
+
 ## Local vs cloud
 
 | Path | Holds |
@@ -73,6 +107,15 @@ Local overlay (`overlays/local/cilium-values.yaml`):
 ## Bootstrap
 
 `overlays/local/bootstrap.sh`, the only imperative step:
+
+```mermaid
+flowchart LR
+  empty["Empty cluster<br/>nodes NotReady"] --> crds["1. Gateway API CRDs"]
+  crds --> cilium["2. Cilium<br/>base + local values"]
+  cilium --> ready["3. Nodes Ready<br/>LB pool applied"]
+  ready --> dns["4. TSIG key + BIND<br/>kube.internal"]
+  dns --> handoff["Ready for Flux"]
+```
 
 1. Apply the Gateway API v1.6.3 CRDs. They must exist before the Cilium operator
    starts, or it disables Gateway API until restarted.
