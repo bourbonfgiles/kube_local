@@ -2,8 +2,8 @@
 
 The platform layer for a local k3d cluster that stands in for a bare EKS
 cluster. The dotfiles repo creates the cluster with no CNI; this repo makes it
-ready for a GitOps tool. Nothing else is installed. What to add next is in
-[extend.md](extend.md).
+ready for a GitOps tool. Nothing else is installed. [docs/](docs/README.md) is a
+numbered learning path for what to add next.
 
 ## Contents
 
