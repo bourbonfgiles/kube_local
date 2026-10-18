@@ -7,7 +7,7 @@ vendor images into it.
 
 | ECR | Here |
 | --- | --- |
-| `<acct>.dkr.ecr.<region>.amazonaws.com/<repo>` | `localhost:5050/<repo>` from the host, `k3d-registry.localhost:5000/<repo>` from nodes and pods |
+| `<acct>.dkr.ecr.<region>.amazonaws.com/<repo>` | `localhost:5050/<repo>` from your machine, `k3d-registry.localhost:5000/<repo>` from nodes and pods |
 | IAM auth, `aws ecr get-login-password` | None |
 | TLS | Plain HTTP |
 | Tag immutability | Not available; tags can be overwritten |
@@ -16,29 +16,54 @@ vendor images into it.
 
 ## Before you start
 
-- `skopeo` (part of Fedora Atomic; `brew install skopeo` on macOS).
+On your machine: `skopeo` (Bazzite base image; `brew install skopeo` on
+macOS), `curl`, `jq`, `k9s`.
+
+In the cluster: the registry container, which dotfiles creates with the
+cluster. podinfo from lesson 2 for task 3.
+
+## Objects
+
+No new Kubernetes objects. The change is to podinfo's values:
+
+| Kind | Name | File |
+| --- | --- | --- |
+| ConfigMap, changed | `podinfo/podinfo-values-local` | `apps/local/podinfo/values.yaml` |
+
+The image location is local: on EKS the same keys would name your ECR repo.
 
 ## Tasks
 
-1. Mirror two podinfo releases:
+1. Mirror two podinfo releases. `--all` copies every architecture, so the
+   digest matches upstream:
    ```sh
    for t in 6.7.0 6.7.1; do
-     skopeo copy --dest-tls-verify=false \
+     skopeo copy --all --dest-tls-verify=false \
        docker://ghcr.io/stefanprodan/podinfo:$t \
        docker://localhost:5050/podinfo:$t
    done
    ```
-2. See what's there: `skopeo list-tags --tls-verify=false docker://localhost:5050/podinfo`,
-   or `curl localhost:5050/v2/_catalog`.
-3. Point podinfo's HelmRelease at the mirror: `image.repository:
-   k3d-registry.localhost:5000/podinfo`, `image.tag: 6.7.0`. In k9s, `d` on
-   the pod shows where it pulled from.
-4. `skopeo inspect` the same tag upstream and locally: the digests match, so
-   it's the same image.
+2. See what's there:
+   ```sh
+   skopeo list-tags --tls-verify=false docker://localhost:5050/podinfo
+   curl -s localhost:5050/v2/_catalog | jq
+   ```
+3. Point podinfo at the mirror. In `podinfo-values-local`:
+   ```yaml
+   image:
+     repository: k3d-registry.localhost:5000/podinfo
+     tag: 6.7.0
+   ```
+   Push. In k9s, `d` on the new pod shows the image it pulled.
+4. Compare digests upstream and locally; they match, so it's the same image:
+   ```sh
+   skopeo inspect --format '{{.Digest}}' docker://ghcr.io/stefanprodan/podinfo:6.7.0
+   skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0
+   ```
 5. Copy `6.7.1` over the `6.7.0` tag. Nothing stops it; that's what ECR's
    immutability setting prevents. Put it back afterwards.
 6. Optional, closer to ECR: Zot as a HelmRelease (built-in auth, RBAC,
-   scanning), and give Flux credentials with a `secretRef` in lesson 8.
+   scanning), then a `secretRef` on Flux's ImageRepository in lesson 8.
 
 ## Done when
 
@@ -46,12 +71,15 @@ vendor images into it.
 
 ## Where it gets hard
 
-- One registry, three names: `localhost:5050` (host), `k3d-registry.localhost:5000`
-  (nodes, pods), and the container name. Pods can't use `localhost:5050`.
+- One registry, two names: `localhost:5050` from your machine, and
+  `k3d-registry.localhost:5000` from nodes and pods. Pods can't use
+  `localhost:5050`.
 - `curl` from a pod to `k3d-registry.localhost` is refused, because curl maps
   every `*.localhost` name to `127.0.0.1`. Use `wget` or `curl --resolve`.
 - Plain HTTP means `--dest-tls-verify=false` for skopeo and `insecure: true`
   for Flux.
+- Without `--all`, skopeo copies only your machine's architecture and the
+  digest changes.
 - Promotion by semver assumes tags never change, and nothing here enforces it.
 
 ## Links

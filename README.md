@@ -113,24 +113,25 @@ together. The dotfiles side is in its `kubernetes.md`.
 
 ## Working with the cluster
 
-Pass `--context k3d-dev` (`--kube-context` for helm) if you also have work
-contexts.
+Run these from this repo on your machine. Every command names the cluster
+(`--context k3d-dev`, or `--kube-context` for helm) so it can't hit a work
+context.
 
 | To | Run |
 | --- | --- |
 | Node containers | `kpodman ps` (plain `podman` is rootless and sees nothing) |
 | Cilium health | `cilium status --context k3d-dev` |
-| Live flows | `cilium hubble port-forward &` then `hubble observe -f` |
-| Hubble UI | `cilium hubble ui` |
+| Live flows | `cilium --context k3d-dev hubble port-forward` in one terminal, `hubble observe -f` in another |
+| Hubble UI | `cilium --context k3d-dev hubble ui` |
 | Query BIND | `dig @10.89.0.250 <name>.kube.internal` |
-| Read the TSIG secret | `kubectl -n dns get secret externaldns-tsig -o jsonpath='{.data.secret}' \| base64 -d` |
+| Read the TSIG secret | `kubectl --context k3d-dev -n dns get secret externaldns-tsig -o jsonpath='{.data.secret}' \| base64 -d` |
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | Nodes stay `NotReady` | No CNI yet | Run `bootstrap.sh`. |
-| GatewayClass `cilium` missing | CRDs applied after the Cilium operator started | `kubectl -n kube-system rollout restart deploy/cilium-operator` |
+| GatewayClass `cilium` missing | CRDs applied after the Cilium operator started | `kubectl --context k3d-dev -n kube-system rollout restart deploy/cilium-operator` |
 | ClusterIPs `network is unreachable` | cgroup settings changed on a live cluster; Cilium keeps its pinned hooks | Rebuild the cluster. |
 | `type: LoadBalancer` stuck `<pending>` | `lb-ipam.yaml` not applied, or range outside the network | `kpodman network inspect k3d-dev`, re-run `bootstrap.sh`. |
 | Route returns 503 after adding NetworkPolicies | Cilium's Gateway reaches pods from the `ingress` identity, which a plain `NetworkPolicy` can't select | `CiliumNetworkPolicy` with `fromEntities: [ingress]`. Hubble shows no `DROPPED`; Envoy refuses it. |
