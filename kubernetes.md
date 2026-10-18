@@ -264,8 +264,10 @@ removes Flux but leaves the deploy key in the GitHub repo settings.
 
 `bootstrap.sh` runs BIND serving `kube.internal` on `10.89.0.250`, with an empty
 zone. It accepts RFC2136 updates signed with the TSIG key `externaldns`
-(`hmac-sha256`). The key is generated into the Secret `externaldns-tsig`, in both
-the `dns` and `external-dns` namespaces, and never goes in Git.
+(`hmac-sha256`). The key is generated into the Secret `externaldns-tsig` in the
+`dns` namespace and never goes in Git. ExternalDNS needs it in its own namespace;
+read it with
+`kubectl -n dns get secret externaldns-tsig -o jsonpath='{.data.secret}' | base64 -d`.
 
 | Piece | Where |
 | --- | --- |
