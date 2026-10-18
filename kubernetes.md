@@ -36,6 +36,8 @@ Kustomize is involved.
 | k3s pinned to 1.36 | A minor EKS offers in standard support (until Aug 2027). |
 | Rootful Podman | Cilium loads BPF programs; atomic Fedora disables unprivileged BPF. |
 | No host bpffs mount | Each node gets its own bpffs; a shared one would collide pinned maps. |
+| Fixed Podman network `k3d-dev` (bridge `k3d0`, `10.89.0.0/24`) | Created by dotfiles, so LB IPs and the host DNS route always point at the same place. |
+| API server on `127.0.0.1` | Not reachable from the LAN. Mapped ports 25565 and 30001-30004 still are. |
 
 ## Networking: Cilium 1.20
 
@@ -64,6 +66,9 @@ Local overlay (`overlays/local/cilium-values.yaml`):
   `network is unreachable`). If you change this on a running cluster, rebuild
   it: Cilium reuses its pinned hooks across restarts.
 - `operator.replicas: 1`.
+- `ipam.mode: kubernetes`: pods get IPs from the per-node CIDRs k3s assigns
+  (`10.42.0.0/16`). Cilium's own default pool, `10.0.0.0/8`, overlaps the node
+  network.
 
 ## Bootstrap
 
@@ -74,6 +79,7 @@ Local overlay (`overlays/local/cilium-values.yaml`):
 2. `helm upgrade --install` Cilium with base + local values, pinned to the
    `k3d-dev` kube-context so it can't land anywhere else.
 3. Wait for Cilium and Ready nodes, then apply the LB-IPAM pool.
+4. Generate the TSIG key and start BIND for `kube.internal` (see DNS).
 
 Re-runnable. Flux (or Argo CD) is installed by hand afterwards; see README.md.
 
@@ -93,7 +99,7 @@ work contexts, so nothing lands on the wrong cluster.
 | Cilium health | `cilium status --context k3d-dev` |
 | Live flows | `cilium hubble port-forward &` then `hubble observe -f` |
 | Hubble UI | `cilium hubble ui` |
-| Reach a LoadBalancer/Gateway | Its `10.89.0.2xx` address, straight from the host |
+| Reach a LoadBalancer/Gateway | Its `10.89.0.2xx` address, or a `*.kube.internal` name once ExternalDNS is in |
 
 ## Getting started with Flux
 
@@ -126,12 +132,17 @@ flux check --pre --context k3d-dev
 export GITHUB_TOKEN=...
 flux bootstrap github --context k3d-dev \
   --owner bourbonfgiles --repository kube_local --personal --private=false \
-  --branch feature/bootstrap --path clusters/dev
+  --branch master --path clusters/dev \
+  --components-extra image-reflector-controller,image-automation-controller \
+  --read-write-key
 git pull
 ```
 
 `--private=false` because the repo is public; without it bootstrap assumes a
-private repo. Bootstrap installs the controllers into `flux-system`, commits
+private repo. The last two flags are for image promotion later: the image
+controllers watch registries, and image automation commits tag bumps back to
+Git, which needs a deploy key with write access. Adding them now saves a second
+bootstrap. Bootstrap installs the controllers into `flux-system`, commits
 `clusters/dev/flux-system/`, and creates a `GitRepository` and a `Kustomization`,
 both named `flux-system`, that sync `clusters/dev`. From here, anything committed
 under `clusters/dev/` gets applied.
@@ -141,76 +152,28 @@ flux get all -A
 flux events -A
 ```
 
-### 2. First HelmRelease, exposed through the Gateway
+### 2. What's yours to build
 
-`clusters/dev/podinfo.yaml`:
+Nothing beyond the platform is installed. Suggested order, each as Flux objects
+under `clusters/dev/`:
 
-```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: podinfo
----
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    semver: "6.x"
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 10m
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
-metadata:
-  name: web
-  namespace: podinfo
-spec:
-  gatewayClassName: cilium
-  listeners:
-    - name: http
-      protocol: HTTP
-      port: 80
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  parentRefs:
-    - name: web
-  rules:
-    - backendRefs:
-        - name: podinfo
-          port: 9898
-```
+1. A `Gateway` (`gatewayClassName: cilium`). Cilium gives it an IP from the LB
+   pool, usually `10.89.0.200`.
+2. A first `HelmRelease` (podinfo is the usual one) and an `HTTPRoute` to it
+   through that Gateway. Test with `curl -H 'Host: <name>' http://10.89.0.200/`
+   until DNS is in.
+3. ExternalDNS as a `HelmRelease`, writing to the local BIND (see DNS below).
+   Then a hostname on a route becomes a real name.
+4. Cilium itself (below).
+5. Whatever you want to run on it.
 
-```sh
-git add clusters/dev/podinfo.yaml && git commit -m "podinfo" && git push
-flux reconcile kustomization flux-system --with-source
-flux get helmreleases -A
-curl "http://$(kubectl -n podinfo get gateway web -o jsonpath='{.status.addresses[0].value}')"
-```
+Then change something in Git, push, and watch helm-controller roll it out.
+Delete an `HTTPRoute` with `kubectl` and the next reconcile puts it back.
+Deleting a chart's Deployment doesn't, unless the HelmRelease sets
+`spec.driftDetection.mode: enabled`, the Flux equivalent of Argo's self-heal.
 
-Then change something in Git (`spec.values.replicaCount: 3`), push, and watch
-helm-controller roll it out. Delete the HTTPRoute with `kubectl` and the next
-reconcile puts it back. Deleting the Deployment doesn't, unless you set
-`spec.driftDetection.mode: enabled` on the HelmRelease. That's the Flux
-equivalent of Argo's self-heal for Helm charts.
+Once Flux owns something, change it through Git only. A manual `helm upgrade`
+just gets reverted on the next reconcile.
 
 ### 3. Make Flux own Cilium
 
@@ -222,11 +185,22 @@ takes over the release bootstrap made instead of installing a second one.
 Values have to come from the HelmRelease itself: `valuesFrom` reads ConfigMaps
 and Secrets, not files in Git. Either inline both values files (base first, then
 local), or commit them as two ConfigMaps and list both under `valuesFrom` in
-that order. The ConfigMap route keeps one copy, but then `bootstrap.sh` has to
-read the same ConfigMaps.
+that order.
 
 Leave `k8sServiceHost` in the values. If Flux drops it, Cilium loses the API
 server and the cluster's networking goes down.
+
+### 4. Image promotion (later)
+
+The pieces are already in place: a registry pods can reach at
+`k3d-registry.localhost:5000` (plain HTTP, so set `spec.insecure: true` on the
+`ImageRepository`), and the image controllers from bootstrap. The loop:
+
+1. Build and push `localhost:5050/<app>:1.0.0` from the host.
+2. `ImageRepository` scans `k3d-registry.localhost:5000/<app>`.
+3. `ImagePolicy` picks the newest tag matching a semver range.
+4. `ImageUpdateAutomation` commits the new tag into the HelmRelease values,
+   wherever a `# {"$imagepolicy": "<ns>:<policy>"}` marker comment sits.
 
 ### Day 2
 
@@ -234,7 +208,7 @@ server and the cluster's networking goes down.
 flux get kustomizations -A      # is the sync healthy?
 flux logs -A --level=error       # what failed?
 flux diff kustomization flux-system --path clusters/dev   # what would change?
-flux trace -n podinfo deployment podinfo                   # which Flux object owns this?
+flux trace -n <ns> deployment <name>                       # which Flux object owns this?
 flux suspend helmrelease cilium -n kube-system             # stop reconciling while you experiment
 flux resume helmrelease cilium -n kube-system
 ```
@@ -242,6 +216,50 @@ flux resume helmrelease cilium -n kube-system
 Starting over: rebuild the cluster, run `bootstrap.sh`, and run the same
 `flux bootstrap` command again. It reuses what's already in Git. `flux uninstall`
 removes Flux but leaves the deploy key in the GitHub repo settings.
+
+## DNS: a local stand-in for Route53
+
+`bootstrap.sh` runs BIND serving `kube.internal` on `10.89.0.250`, with an empty
+zone. It accepts RFC2136 updates signed with the TSIG key `externaldns`
+(`hmac-sha256`). The key is generated into the Secret `externaldns-tsig`, in both
+the `dns` and `external-dns` namespaces, and never goes in Git.
+
+| Piece | Where |
+| --- | --- |
+| BIND | `overlays/local/dns/bind.yaml` |
+| TSIG key | `overlays/local/dns/tsig-secret.sh` |
+| Pods resolve `kube.internal` | `overlays/local/dns/coredns-custom.yaml` |
+| Host resolves `kube.internal` | dotfiles `dotfiles-kube-dns.service` (Linux) |
+
+What ExternalDNS needs to talk to it (chart `external-dns` from
+`https://kubernetes-sigs.github.io/external-dns/`):
+
+- Provider `rfc2136`, zone `kube.internal`, host `bind.dns.svc.cluster.local.`
+  on port 53. Keep the trailing dot: it skips the pod's search list.
+- TSIG key name `externaldns`, algorithm `hmac-sha256`. The secret comes from
+  the `secret` key of `externaldns-tsig`.
+- Turn on AXFR so it can read the zone back, or it can't see what it owns.
+- Sources for Gateway API routes are `gateway-httproute` and friends, not
+  `ingress`.
+
+On EKS the provider becomes `aws` with an IRSA role. The sources and policy
+don't change, so split your values the same way as Cilium's.
+
+Check BIND directly with `dig @10.89.0.250 <name>.kube.internal`.
+BIND keeps the zone in an `emptyDir`, so a restart empties it until ExternalDNS
+syncs again.
+
+## Gotchas already paid for
+
+- Cilium's Gateway reaches backends from the `ingress` identity (Hubble shows
+  `(ingress)` as the source). A plain `NetworkPolicy` can't select it, so once
+  an app locks down ingress, routes return 503. Allow it with a
+  `CiliumNetworkPolicy` using `fromEntities: [ingress]`. Envoy refuses the
+  request itself, so you see a 503, not a Hubble `DROPPED`.
+- Rootful Podman shares the host's PID view, so BPF tools run on the host
+  against pod processes. For a JVM, `-XX:+PreserveFramePointer` keeps stacks
+  walkable. k3d maps host port 25565 to NodePort 30000, and 30001-30004
+  straight through, if you want something reachable without the Gateway.
 
 ## Registry
 
@@ -258,7 +276,8 @@ Handled later via GitOps, not emulated in the cluster itself:
 
 - **IRSA / Pod Identity**: no AWS IAM locally; use static creds or the Pod
   Identity webhook when needed.
-- **external-dns**: LocalStack Route53, so the provider config matches EKS.
+- **Route53**: BIND over RFC2136 instead (see DNS). LocalStack's Route53 DNS
+  answering needs a LocalStack account plan, so it was ruled out.
 - **Storage**: a local-path StorageClass aliased `gp3` with
   `WaitForFirstConsumer`; no real EBS.
 - **Karpenter**: the KWOK provider; its AWS `EC2NodeClass` fields don't apply.
