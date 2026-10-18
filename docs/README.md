@@ -20,6 +20,7 @@ you're done, and where it gets hard.
 | 11 | [11-keda.md](11-keda.md) | The shop's Kafka consumer scaled on lag | 10 | Medium |
 | 12 | [12-karpenter.md](12-karpenter.md) | Karpenter provisioning simulated nodes | 2, 7 | Large |
 | 13 | [13-minecraft.md](13-minecraft.md) | A Java server you can join and profile with BPF | 2 | Small |
+| 14 | [14-chaos.md](14-chaos.md) | Chaos Mesh experiments behind one on/off flag in Git | 2, 10 | Medium |
 
 ## Working in k9s
 
@@ -76,8 +77,6 @@ AWS stand-ins
 Observability and resilience
 
 - **Loki and Alloy**: logs next to the metrics from lesson 6.
-- **Chaos Mesh**: kill pods, add latency, partition the network, and watch
-  the OpenTelemetry Demo and Flagger react.
 - **PodDisruptionBudgets and topology spread**: drain nodes with
   `kubectl drain` and see which workloads survive. The agents carry zone
   labels for this.
