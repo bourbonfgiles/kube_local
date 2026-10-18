@@ -1,0 +1,22 @@
+minecraftServer:
+  # Required to start; setting it means you accept the Minecraft EULA.
+  eula: "TRUE"
+  type: VANILLA
+  version: "26.3"
+  memory: 2048M
+  # Keeps JVM stacks walkable for BPF profilers (perf, bcc profile, bpftrace).
+  jvmXXOpts: "-XX:+PreserveFramePointer"
+  difficulty: normal
+  motd: "kube_local"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2560Mi
+  limits:
+    memory: 3Gi
+
+persistence:
+  dataDir:
+    enabled: true
+    Size: 5Gi

@@ -3,12 +3,23 @@
 Bootstraps a local cluster to the point where a GitOps tool can take over.
 
 ```
-cilium/values.yaml          Cilium settings you'd also use on EKS.
-overlays/local/             Everything that only exists because this is k3d.
-  bootstrap.sh              Installs Cilium (base + local values). Nodes go Ready.
-  cilium-values.yaml        k3d-only Cilium settings.
-  lb-ipam.yaml              LoadBalancer IP pool on the k3d node network.
+cilium/values.yaml            Cilium settings you'd also use on EKS.
+external-dns/values.yaml      ExternalDNS sources and sync policy.
+gateway/gateway.yaml          The shared Gateway every app routes through.
+apps/
+  online-boutique/            Microservices demo + its HTTPRoute (shop.kube.internal).
+  minecraft/                  Java Minecraft server.
+overlays/local/               Everything that only exists because this is k3d.
+  bootstrap.sh                Installs Gateway API CRDs + Cilium. Nodes go Ready.
+  cilium-values.yaml          k3d-only Cilium settings.
+  lb-ipam.yaml                LoadBalancer IP pool on the k3d node network.
+  dns/                        BIND for kube.internal, its TSIG key, CoreDNS forward.
+  external-dns-values.yaml    RFC2136 provider pointed at that BIND.
+  minecraft-values.yaml       NodePort 30000 (host port 25565).
 ```
+
+Each component is a plain values file (or manifests), ready to become a Flux
+`HelmRelease`. The install commands are in `kubernetes.md`.
 
 ## 1. Cluster (dotfiles)
 

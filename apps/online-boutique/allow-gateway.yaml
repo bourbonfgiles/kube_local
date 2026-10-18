@@ -1,0 +1,18 @@
+# Cilium's Gateway proxies traffic from its "ingress" identity, which a plain
+# NetworkPolicy can't select. Needed once networkPolicies.create is true.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: frontend-from-gateway
+  namespace: online-boutique
+spec:
+  endpointSelector:
+    matchLabels:
+      app: frontend
+  ingress:
+    - fromEntities:
+        - ingress
+      toPorts:
+        - ports:
+            - port: "8080"
+              protocol: TCP
