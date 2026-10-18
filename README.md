@@ -1,40 +1,53 @@
 # kube_local
 
-GitOps for the local k3d `dev` cluster created by the dotfiles k3d config.
-
-The cluster boots **CNI-less** (flannel and kube-proxy disabled), so nodes start
-`NotReady` — the same clean slate a managed cluster gives you before add-ons.
-
-## Layout
+Bootstraps a local cluster to the point where a GitOps tool can take over.
 
 ```
-bootstrap.sh            One-time imperative step: Cilium + flux bootstrap.
-clusters/dev/           Flux entrypoint for this cluster.
-infrastructure/
-  cilium/               CNI: HelmRelease (inline values) + LB-IPAM.
+cilium/values.yaml          Cilium settings you'd also use on EKS.
+overlays/local/             Everything that only exists because this is k3d.
+  bootstrap.sh              Installs Cilium (base + local values). Nodes go Ready.
+  cilium-values.yaml        k3d-only Cilium settings.
+  lb-ipam.yaml              LoadBalancer IP pool on the k3d node network.
 ```
 
-No `kustomization.yaml` files: everything is a Helm chart via a HelmRelease,
-and Flux auto-includes the plain manifests under the path it reconciles.
+## 1. Cluster (dotfiles)
 
-## Order
+```sh
+cd ~/repos/personal/dotfiles
+uv run python -c 'from dotfiles.services import k8s; k8s.create_cluster()'
+```
 
-1. Create the cluster (dotfiles): `k3d cluster create --config ~/.config/k3d/config.yaml`
-2. Export `GITHUB_USER` and `GITHUB_TOKEN`, then `./bootstrap.sh`:
-   - helm-installs **Cilium** with the HelmRelease's inline values (nodes go Ready)
-   - runs **`flux bootstrap`**, which adopts Cilium and reconciles the rest
-3. Add components as HelmReleases under `infrastructure/` and `apps/`; Flux applies them.
+Nodes start `NotReady`: there's no CNI yet.
 
-## Why Cilium is installed twice (helm then Flux)
+## 2. Networking
 
-Flux is pods and pods need a CNI, so Cilium cannot be installed by Flux. The
-bootstrap helm-installs it using the **same inline values** the Flux HelmRelease
-declares (extracted with `yq`), so Flux adopts the existing release rather than
-fighting it. The HelmRelease is the single source of truth for the values.
+```sh
+./overlays/local/bootstrap.sh
+```
 
-## Cilium notes
+Installs the Gateway API CRDs, then Cilium (Gateway API on), then the LB pool.
 
-- `kubeProxyReplacement: true` and `k8sServiceHost: k3d-dev-serverlb` are
-  required: kube-proxy is disabled, so Cilium needs the API server address.
-- LB-IPAM + L2 announcements give `type: LoadBalancer` services real IPs, the
-  realistic way to expose TCP (e.g. a Minecraft service) rather than a NodePort.
+## 3. Flux (yours to do)
+
+```sh
+flux check --pre
+export GITHUB_TOKEN=...   # fine-grained PAT, contents read/write on this repo
+flux bootstrap github --personal \
+  --owner=bourbonfgiles --repository=kube_local \
+  --branch=feature/bootstrap --path=clusters/dev
+```
+
+That commits `clusters/dev/flux-system/` to the branch. Its `kustomization.yaml`
+and `Kustomization` object are Flux's own plumbing; you don't need to write any
+Kustomize yourself.
+
+Then make Flux own Cilium: add a `HelmRepository` and a `HelmRelease` named
+`cilium` in `kube-system` under `clusters/dev/`. Matching name and namespace
+means helm-controller upgrades the release `bootstrap.sh` made instead of
+installing a second one.
+
+Flux pulls from GitHub, not this checkout: push before expecting a change.
+
+To decide: a HelmRelease can't read `cilium/values.yaml` straight from Git
+(`valuesFrom` takes ConfigMaps or Secrets). Either inline the values or turn the
+two values files into ConfigMap manifests.
