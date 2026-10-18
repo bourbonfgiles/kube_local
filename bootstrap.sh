@@ -12,19 +12,22 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CILIUM_DIR="${REPO_ROOT}/infrastructure/cilium"
+RELEASE="${REPO_ROOT}/infrastructure/cilium/release.yaml"
 CILIUM_VERSION="1.18.1"
 
 helm repo add cilium https://helm.cilium.io >/dev/null
 helm repo update cilium >/dev/null
 
-helm install cilium cilium/cilium \
-  --version "${CILIUM_VERSION}" \
-  --namespace kube-system \
-  --values "${CILIUM_DIR}/values.yaml"
+# Install with the exact values the Flux HelmRelease declares (inline under
+# spec.values) so Flux adopts this release rather than fighting it.
+yq eval 'select(.kind == "HelmRelease") | .spec.values' "${RELEASE}" \
+  | helm install cilium cilium/cilium \
+      --version "${CILIUM_VERSION}" \
+      --namespace kube-system \
+      --values -
 
 cilium status --wait
-kubectl apply -f "${CILIUM_DIR}/lb-ipam.yaml"
+kubectl apply -f "${REPO_ROOT}/infrastructure/cilium/lb-ipam.yaml"
 
 # Needs GITHUB_USER and GITHUB_TOKEN. Writes Flux manifests to clusters/dev and
 # starts reconciling; Flux then owns Cilium via the HelmRelease.

@@ -10,6 +10,8 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
+  # No kustomization.yaml in the tree: Flux auto-includes every manifest under
+  # this path (recursively), so infrastructure/cilium is picked up.
   path: ./infrastructure
   prune: true
   wait: true
