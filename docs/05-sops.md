@@ -1,49 +1,191 @@
 # 5. Secrets in Git with SOPS
 
-Encrypt Secrets so they can live in this public repo, and have Flux decrypt
-them in the cluster.
+> You end up with: the TSIG and CA Secrets stored encrypted in this public
+> repo, and Flux decrypting them into the cluster.
 
-EKS equivalent: SOPS with an AWS KMS key, or External Secrets reading AWS
-Secrets Manager.
+## What it is
 
-## Before you start
+SOPS encrypts the *values* in a YAML file and leaves the keys readable, so a
+Secret in Git still shows its name, namespace and field names, and diffs stay
+meaningful. It encrypts to one or more keys: here an **age** key pair, a
+modern replacement for GPG keys.
 
-- `sops` and `age` (brew).
-- Candidates: the ExternalDNS TSIG secret (lesson 3), the CA Secret (lesson 4).
+```mermaid
+flowchart LR
+  you["You: sops --encrypt<br/>with the age public key"] --> git["Git<br/>data: ENC[AES256_GCM,...]"]
+  git --> kc["kustomize-controller<br/>decryption: sops"]
+  key["Secret sops-age<br/>age private key"] --> kc
+  kc --> sec["Secret in the cluster<br/>plain values"]
+```
 
-## Tasks
+| Piece | Lives | Note |
+| --- | --- | --- |
+| age public key | `.sops.yaml` in the repo | Anyone can encrypt with it |
+| age private key | `~/.config/sops/age/keys.txt`, and Secret `flux-system/sops-age` | The one thing never in Git |
+| `.sops.yaml` | Repo root | Which files to encrypt, which fields, to which keys |
+| Encrypted Secret | `secrets/local/*.yaml` | Safe to commit |
 
-1. `age-keygen -o ~/.config/sops/age/keys.txt`. Back it up somewhere safe. If you
-   lose it, nothing in Git can be decrypted.
-2. `kubectl -n flux-system create secret generic sops-age --from-file=age.agekey=<that file>`.
-3. `.sops.yaml` at the repo root: a rule with a `path_regex` for your secrets
-   directory, `encrypted_regex: ^(data|stringData)$`, and the age public key.
-4. Choose a directory outside `clusters/dev`, e.g. `secrets/dev/`.
-5. Write a Secret with `kubectl create secret ... --dry-run=client -o yaml`,
-   then `sops --encrypt --in-place` it. Check `data` is ciphertext and
-   `metadata` is readable.
-6. A Flux `Kustomization` under `clusters/dev/` pointing at `./secrets/dev` with
-   `decryption: {provider: sops, secretRef: {name: sops-age}}`.
-7. Push, then check the Secret in the cluster has the plain value.
-8. Replace the hand-made TSIG secret in `external-dns` with the Git one. Use the
-   value that's already in `dns/externaldns-tsig`, so BIND still accepts it.
+Flux decrypts at apply time, in memory. The plaintext only ever exists in the
+cluster's Secret.
 
-## Done when
+## On EKS
 
-- `git grep` of the repo finds no plaintext secret, and a rebuilt cluster gets
-  every secret back from Git plus the one age key.
+SOPS with an AWS KMS key instead of age: `.sops.yaml` names the KMS ARN, and
+kustomize-controller gets an IAM role allowed to decrypt with it. Nothing to
+copy into the cluster by hand. The other common choice is External Secrets
+Operator reading AWS Secrets Manager, so secrets never touch Git at all.
+
+## Requirements
+
+**In the cluster**: Flux (lesson 2). The hand-made Secrets
+`external-dns/externaldns-tsig` (lesson 3) and `cert-manager/local-ca`
+(lesson 4), if you did those lessons.
+
+**On your machine**: `sops`, `age` and `age-keygen` (comes with `age`),
+`kubectl`, `flux`, `git`.
+
+## Install by hand
+
+### 1. A key pair
+
+```sh
+mkdir -p ~/.config/sops/age
+age-keygen -o ~/.config/sops/age/keys.txt
+```
+
+It prints the public key (`age1...`). sops finds the private key at that path
+on Linux; on macOS set `SOPS_AGE_KEY_FILE` to it.
+
+> [!CAUTION]
+> Back `keys.txt` up somewhere outside this machine. Lose it and nothing in
+> Git can be decrypted.
+
+### 2. Encrypt, read, apply
+
+A throwaway Secret to see what SOPS does:
+
+```sh
+mkdir -p scratch/05
+kubectl --context k3d-dev -n default create secret generic demo \
+  --from-literal=password=hunter2 --dry-run=client -o yaml > scratch/05/demo.yaml
+sops --encrypt --age age1... --encrypted-regex '^(data|stringData)$' --in-place scratch/05/demo.yaml
+cat scratch/05/demo.yaml
+```
+
+`data.password` is ciphertext; `metadata` is readable; a `sops:` block at the
+end records how to decrypt it. Now apply it the way Flux will, decrypting in
+a pipe so the plaintext never touches disk:
+
+```sh
+sops --decrypt scratch/05/demo.yaml | kubectl --context k3d-dev apply -f -
+```
+
+k9s `:secrets -n default`, `x` on `demo`: `hunter2`.
+
+### 3. Iterate
+
+| Try | Then look at |
+| --- | --- |
+| `sops scratch/05/demo.yaml` | It opens decrypted in your editor and re-encrypts on save |
+| Change the password that way, then `git diff --no-index` against a copy | Only that value's ciphertext and the `sops.mac` change |
+| Drop `--encrypted-regex` and encrypt a fresh copy | Every value is encrypted, even `metadata.name`, and Kubernetes rejects it |
+| Move `keys.txt` aside and `sops --decrypt` | The error you'd get on a machine without the key. Put it back. |
+
+### 4. Clean up
+
+```sh
+kubectl --context k3d-dev -n default delete secret demo
+```
+
+## Install with Flux
+
+| Kind | Name | File |
+| --- | --- | --- |
+| SOPS rules | | `.sops.yaml` |
+| Secret | `flux-system/sops-age` | By hand only: it's the key to everything else |
+| Kustomization | `secrets` | `clusters/dev/secrets.yaml` |
+| Secret, encrypted | `external-dns/externaldns-tsig` | `secrets/local/external-dns-tsig.yaml` |
+| Secret, encrypted | `cert-manager/local-ca` | `secrets/local/cert-manager-local-ca.yaml` |
+
+1. Rules, so you don't pass flags each time:
+   ```yaml
+   # .sops.yaml
+   creation_rules:
+     - path_regex: secrets/.*\.yaml$
+       encrypted_regex: ^(data|stringData)$
+       age: age1...   # your public key
+   ```
+2. Give Flux the private key:
+   ```sh
+   kubectl --context k3d-dev -n flux-system create secret generic sops-age \
+     --from-file=age.agekey="$HOME/.config/sops/age/keys.txt"
+   ```
+3. The TSIG Secret as a file, encrypted before it's staged. Run sops from the
+   repo root so `.sops.yaml` is found:
+   ```sh
+   mkdir -p secrets/local
+   kubectl --context k3d-dev -n external-dns create secret generic externaldns-tsig \
+     --from-literal=secret="$(kubectl --context k3d-dev -n dns get secret externaldns-tsig \
+       -o jsonpath='{.data.secret}' | base64 -d)" \
+     --dry-run=client -o yaml > secrets/local/external-dns-tsig.yaml
+   sops --encrypt --in-place secrets/local/external-dns-tsig.yaml
+   ```
+4. The CA the same way:
+   ```sh
+   kubectl --context k3d-dev -n cert-manager create secret tls local-ca \
+     --cert="$(mkcert -CAROOT)/rootCA.pem" --key="$(mkcert -CAROOT)/rootCA-key.pem" \
+     --dry-run=client -o yaml > secrets/local/cert-manager-local-ca.yaml
+   sops --encrypt --in-place secrets/local/cert-manager-local-ca.yaml
+   ```
+5. The Kustomization that decrypts:
+   ```yaml
+   # clusters/dev/secrets.yaml
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: secrets
+     namespace: flux-system
+   spec:
+     dependsOn:
+       - name: infra-base          # creates the namespaces
+     interval: 10m
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./secrets/local
+     prune: true
+     decryption:
+       provider: sops
+       secretRef:
+         name: sops-age
+   ```
+6. `git add .sops.yaml clusters/dev/secrets.yaml secrets/`, commit, push.
+   k9s `:secrets -n external-dns`, `x`: the same value as BIND's. Flux has
+   taken over the Secret you made by hand.
+
+## Exercises
+
+1. `git grep -nE 'hunter2|BEGIN (RSA |EC )?PRIVATE'` the whole repo: nothing.
+2. Edit the TSIG Secret with `sops secrets/local/external-dns-tsig.yaml`, push,
+   and watch ExternalDNS's updates start failing. Put it back.
+3. Rebuild the cluster. Recreate `sops-age` (step 2) before Flux syncs
+   `secrets`, and see everything else come back on its own.
+4. Harder: add a second age recipient (a key for "CI") to `.sops.yaml`, then
+   `sops updatekeys` each file. Prove either key alone can decrypt.
 
 ## Where it gets hard
 
-- Bootstrap's `flux-system` Kustomization applies everything under
-  `clusters/dev` and has no decryption, so an encrypted file there fails to
-  apply. That's why the secrets live elsewhere.
-- `sops-age` itself can't be in Git. It's the one secret you recreate by hand
-  after a rebuild.
-- Editing: `sops <file>` decrypts into your editor and re-encrypts on save.
-  Don't decrypt to disk.
+- `flux-system` applies everything under `clusters/dev/` with no decryption,
+  so an encrypted file there fails to apply. Secrets live under `secrets/`.
+- `sops-age` is the one Secret recreated by hand after every rebuild. Until it
+  exists, `secrets` fails with a decryption error.
+- `bootstrap.sh` generates a new TSIG key for each new cluster. After a
+  rebuild BIND has a key Git doesn't; redo step 3 and push.
+- `sops --encrypt` on a file that's already encrypted fails; `sops` (edit) is
+  for changing one.
 
 ## Links
 
 - <https://fluxcd.io/flux/guides/mozilla-sops/>
 - <https://github.com/getsops/sops>
+- <https://github.com/FiloSottile/age>
