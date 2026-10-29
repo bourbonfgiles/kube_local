@@ -47,7 +47,7 @@ learn here carry over unchanged.
 **In the cluster**: the local registry (lesson 7), and Flux for the Flux part.
 
 **On your machine**: `git`, `go`, `ko`, `kwok`, `make`, `kubectl`, `helm`,
-`flux`, `k9s`.
+`flux`, `k9s`, `sofka`.
 
 ## Install by hand
 
@@ -199,6 +199,22 @@ instance type Karpenter chose and why.
 | `disruption: {consolidationPolicy: WhenEmpty, consolidateAfter: 30s}` on the NodePool | Only empty nodes go; half-empty ones stay |
 | `limits.cpu: 8`, scale to 20 | Some pods stay `Pending`; the NodeClaim events say the limit was hit |
 | A disruption `budgets` entry `nodes: "1"` | Consolidation removes one node at a time |
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| Nodes appearing | `kubectl --context k3d-dev get nodeclaims,nodes -w` | `:nodeclaims`, `:nodes` | `:nodeclaims`, `:nodes` |
+| Why that instance type | `kubectl --context k3d-dev describe nodeclaim <name>` | `d` | `d` |
+| Pods still `Pending` | `kubectl --context k3d-dev -n default get pods --field-selector=status.phase=Pending` | `:pods -n default`, `ctrl-z` | `:pods -n default`, `ctrl-z` |
+| Why a pod is `Pending` | `kubectl --context k3d-dev -n default describe pod <name>` | `d` | `X` |
+| What each node has promised | `kubectl --context k3d-dev describe node <name>`, Allocated resources | `d` on the node | `:nodes`: `%CPU/R` |
+| Karpenter's reasoning | `kubectl --context k3d-dev -n kube-system logs deploy/karpenter -f` | `:pods -n kube-system`, `l` on `karpenter` | `:deploy -n kube-system`, `l` on `karpenter` |
+
+> [!TIP]
+> sofka's `X` on a node checks Ready, cordon, taints and pod capacity. On a
+> fake node it shows the `kwok` taint, and during consolidation, the cordon
+> Karpenter put on before draining it.
 
 ### 8. Clean up
 

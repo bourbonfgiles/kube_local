@@ -50,7 +50,7 @@ Load Balancer Controller). Argo Rollouts is the Argo-world equivalent.
 Hubble's `httpV2` metrics, and two podinfo tags in the local registry
 (lesson 7).
 
-**On your machine**: `kubectl`, `helm`, `flux`, `k9s`, `curl`.
+**On your machine**: `kubectl`, `helm`, `flux`, `k9s`, `sofka`, `curl`.
 
 ## Install by hand
 
@@ -189,6 +189,22 @@ counts the canary's share of traffic: Flagger's canary pods run as Deployment
 
 </details>
 
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| Canary phase and weight | `kubectl --context k3d-dev get canaries -n canary-demo -w` | `:canaries -n canary-demo` | `:canaries -n canary-demo` |
+| Primary and canary | `kubectl --context k3d-dev get deploy -n canary-demo` | `:deploy -n canary-demo` | `:deploy -n canary-demo` |
+| Weights on the route | `kubectl --context k3d-dev -n canary-demo get httproute podinfo -o yaml` | `:httproutes -n canary-demo`, `d` | `:httproutes -n canary-demo`, `d` |
+| Why it rolled back | `kubectl --context k3d-dev -n canary-demo events --for canary/podinfo` | `d` on the Canary | `E` on the Canary |
+| Flagger's own view | `kubectl --context k3d-dev -n flagger-system logs deploy/flagger -f` | `:pods -n flagger-system`, `l` | `:deploy -n flagger-system`, `l` |
+
+> [!TIP]
+> Open sofka on `:canaries -n canary-demo` before the faulty release. `T` on
+> the Canary records each condition change with a timestamp, `E` gives
+> Flagger's events for each failed check, and `T` on Deployment `podinfo`
+> shows the canary scaling up and back to zero.
+
 ### 6. Clean up
 
 ```sh
@@ -251,7 +267,7 @@ Now for the real podinfo, so lesson 8's commits become canaries.
 
 - Flagger takes over the Deployment: traffic goes to `podinfo-primary`, and the
   Deployment you manage sits at zero replicas between releases. Expect that in
-  k9s.
+  k9s and sofka.
 - Flagger's built-in metrics for `gatewayapi` are written for Envoy's own
   metrics, which Cilium doesn't export. You write your own against Hubble's.
 - Without traffic there's nothing to measure and analysis fails. That's the

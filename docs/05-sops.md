@@ -42,7 +42,7 @@ Operator reading AWS Secrets Manager, so secrets never touch Git at all.
 (lesson 4), if you did those lessons.
 
 **On your machine**: `sops`, `age` and `age-keygen` (comes with `age`),
-`kubectl`, `flux`, `git`.
+`kubectl`, `flux`, `git`, `k9s`, `sofka`.
 
 ## Install by hand
 
@@ -90,6 +90,14 @@ k9s `:secrets -n default`, `x` on `demo`: `hunter2`.
 | Change the password that way, then `git diff --no-index` against a copy | Only that value's ciphertext and the `sops.mac` change |
 | Drop `--encrypted-regex` and encrypt a fresh copy | Every value is encrypted, even `metadata.name`, and Kubernetes rejects it |
 | Move `keys.txt` aside and `sops --decrypt` | The error you'd get on a machine without the key. Put it back. |
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| The decrypted value | `kubectl --context k3d-dev -n default get secret demo -o jsonpath='{.data.password}' \| base64 -d` | `:secrets -n default`, `x` | `:secrets -n default`, `x` |
+| Flux decrypting (Flux part) | `kubectl --context k3d-dev -n flux-system get kustomization secrets` | `:kustomizations -n flux-system` | `:kustomizations -n flux-system`, `X` on `secrets` |
+| Who owns the Secret now | `kubectl --context k3d-dev -n external-dns get secret externaldns-tsig -o yaml`, the `kustomize.toolkit.fluxcd.io` labels | `y`, or `Shift-q` (plugin) | `:gitops` on the Secret |
 
 ### 4. Clean up
 
@@ -178,7 +186,9 @@ kubectl --context k3d-dev -n default delete secret demo
 - `flux-system` applies everything under `clusters/dev/` with no decryption,
   so an encrypted file there fails to apply. Secrets live under `secrets/`.
 - `sops-age` is the one Secret recreated by hand after every rebuild. Until it
-  exists, `secrets` fails with a decryption error.
+  exists, `secrets` fails with a decryption error: `ctrl-z` on
+  `:kustomizations -A` in sofka or k9s shows it, and sofka's `X` gives the
+  message.
 - `bootstrap.sh` generates a new TSIG key for each new cluster. After a
   rebuild BIND has a key Git doesn't; redo step 3 and push.
 - `sops --encrypt` on a file that's already encrypted fails; `sops` (edit) is

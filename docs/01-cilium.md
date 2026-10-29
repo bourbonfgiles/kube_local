@@ -66,7 +66,7 @@ an ALB. The `Gateway` and `HTTPRoute` objects are the same either way; only the
 - `cilium --context k3d-dev status` is all green.
 - k9s `:gatewayclasses` shows `cilium` with `ACCEPTED True`.
 
-**On your machine**: `kubectl`, `helm`, `cilium`, `hubble`, `k9s`, `curl`.
+**On your machine**: `kubectl`, `helm`, `cilium`, `hubble`, `k9s`, `sofka`, `curl`.
 
 ## Look around first
 
@@ -250,6 +250,17 @@ done | sort | uniq -c
 Watch the requests in `hubble observe -f`. The source shows as `(ingress)`:
 that's Cilium's Envoy, not your machine.
 
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| GatewayClass accepted | `kubectl --context k3d-dev get gatewayclasses` | `:gatewayclasses` | `:gatewayclasses` |
+| Cilium's service map | `kubectl --context k3d-dev -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg service list` | `:pods -n kube-system`, `s` on a `cilium-` pod | The same |
+| Backends | `kubectl --context k3d-dev get svc -n demo` | `:svc -n demo` | `:svc -n demo` |
+| Gateway programmed, with an address | `kubectl --context k3d-dev get gateways -A` | `:gateways -A` | `:gateways -A` |
+| Route conditions | `kubectl --context k3d-dev -n demo describe httproute demo` | `d` on the route | `d` on the route |
+| Which paths a route matches | `kubectl --context k3d-dev -n demo get httproute demo -o yaml` | `y` | `:httproutes -n demo`: the `ROUTES` column |
+
 ### 4. Clean up
 
 ```sh
@@ -285,7 +296,8 @@ Not yet: [lesson 2](02-flux.md) installs Flux and puts this Gateway in Git.
 ## Where it gets hard
 
 - A route that doesn't attach shows nothing in `curl`, only a 404. The reason
-  is always in the route's status.
+  is always in the route's status, under each parent Gateway. sofka's `X`
+  doesn't read that; use `d`.
 - `curl` without the `Host` header gets a 404 from Envoy: no route matches.
 - Rule precedence isn't file order. The longest path match wins, then the
   rule with the most header matches. Two rules matching the same request is

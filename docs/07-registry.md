@@ -49,7 +49,7 @@ or a pipeline running the same `skopeo copy`.
 cluster). podinfo from lesson 2, for the Flux part.
 
 **On your machine**: `skopeo` (Bazzite base image; `brew install skopeo` on
-macOS), `curl`, `jq`, `kubectl`, `k9s`.
+macOS), `curl`, `jq`, `kubectl`, `k9s`, `sofka`.
 
 ## Install by hand
 
@@ -112,6 +112,14 @@ Delete and re-apply the pod after each change:
 | Copy without `--all` to a new tag, inspect its digest | Different from upstream: only your architecture was copied |
 
 Put `6.7.0` back afterwards, from upstream.
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| The digest a pod resolved | `kubectl --context k3d-dev -n default get pod mirror-test -o jsonpath='{.status.containerStatuses[0].imageID}'` | `:pods -n default`, `d`, `Image ID` | `:pods -n default`, `d`, `Image ID` |
+| Why a pull failed | `kubectl --context k3d-dev -n default describe pod mirror-test`, Events | `d` | `X`: `ErrImagePull` and the event behind it |
+| What podinfo runs (Flux part) | `kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'` | `:deploy -n podinfo`, `y` | `:deploy -n podinfo`, `y` |
 
 ### 5. Clean up
 
