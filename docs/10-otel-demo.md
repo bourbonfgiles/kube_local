@@ -47,7 +47,8 @@ Prometheus.
 **In the cluster**: Flux, the Gateway and ExternalDNS (lessons 2-3). About 6 GB
 of free memory.
 
-**On your machine**: `kubectl`, `helm`, `flux`, `hubble`, `curl`, `k9s`, `sofka`.
+**On your machine**: `kubectl`, `helm`, `flux`, `hubble`, `curl`, and `sofka` or `k9s`
+([lesson 0](00-tools.md)).
 
 ## Install by hand
 
@@ -59,8 +60,21 @@ helm --kube-context k3d-dev upgrade --install otel-demo opentelemetry-demo \
   -n otel-demo --create-namespace
 ```
 
-k9s `:pods -n otel-demo` until everything is running (a few minutes; Kafka is
-slowest). `:xray deploy otel-demo` shows the shape.
+```sh
+kubectl --context k3d-dev get pods -n otel-demo -w
+kubectl --context k3d-dev get deploy,sts,jobs,svc -n otel-demo
+```
+
+Wait until everything is running (a few minutes; Kafka is slowest). The
+second command is the shape: every workload, and the Services between them.
+A `Pending` pod says why in `kubectl --context k3d-dev -n otel-demo describe pod <name>`.
+
+sofka / k9s: `:pods -n otel-demo`, `ctrl-z` for stragglers, `d` on one. They
+differ on the shape:
+
+- sofka: `:workloads otel-demo` for every workload in one list; `:xray` from
+  `:deploy -n otel-demo`. `X` on a `Pending` pod ([lesson 0](00-tools.md)).
+- k9s: `:xray deploy otel-demo`.
 
 ### 2. A route to the proxy
 
@@ -96,19 +110,14 @@ ExternalDNS names it. Open `http(s)://otel.kube.internal/` for the shop, and
 | In Jaeger, pick service `frontend`, find a `checkout` trace | Every span, including the Kafka hop to `accounting` |
 | `hubble observe -n otel-demo -f` (with the port-forward from lesson 1) | The same calls from the network's side |
 | Turn on `paymentFailure` in `/feature/` | Red spans in Jaeger, errors in Grafana. Turn it off. |
-| A second rule in the route: hostname `jaeger.otel.kube.internal` straight to the Jaeger Service | Find its name and port in `:svc -n otel-demo`. It may need its base path changed in values to work outside the proxy. |
+| A second rule in the route: hostname `jaeger.otel.kube.internal` straight to the Jaeger Service | Find its name and port in `kubectl --context k3d-dev get svc -n otel-demo`. It may need its base path changed in values to work outside the proxy. |
 | A values file with `components.load-generator.envOverrides: [{name: LOCUST_USERS, value: "50"}]`, then `helm upgrade ... --reuse-values -f` it | More traffic everywhere |
 
-**Where to look**
+`paymentFailure` from the inside:
+`kubectl --context k3d-dev -n otel-demo logs deploy/payment -f`.
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Everything running | `kubectl --context k3d-dev get pods -n otel-demo` | `:pods -n otel-demo`, `ctrl-z` for stragglers | `:pods -n otel-demo`, `ctrl-z` for stragglers |
-| Every workload in one list | `kubectl --context k3d-dev get deploy,sts,jobs -n otel-demo` | `:deploy -n otel-demo` | `:workloads otel-demo` |
-| The shape | `kubectl --context k3d-dev get deploy,svc -n otel-demo` | `:xray deploy otel-demo` | `:deploy -n otel-demo`, then `:xray` |
-| Service names and ports | `kubectl --context k3d-dev get svc -n otel-demo` | `:svc -n otel-demo` | `:svc -n otel-demo` |
-| `paymentFailure` from the inside | `kubectl --context k3d-dev -n otel-demo logs deploy/payment -f` | `l` on `payment` | `l`, `J` to lay out its JSON logs, `ctrl-z` for errors |
-| Why a pod is `Pending` | `kubectl --context k3d-dev -n otel-demo describe pod <name>` | `d` | `X` |
+sofka / k9s: `l` on `payment`. sofka extra: `J` lays out its JSON logs, and
+`ctrl-z` leaves only the errors.
 
 ### 4. Clean up
 
@@ -151,13 +160,13 @@ kubectl --context k3d-dev delete namespace otel-demo
 
 ## Where it gets hard
 
-- Check Service names in `:svc` rather than guessing; some depend on the
+- Check Service names with `get svc` rather than guessing; some depend on the
   release name.
 - Grafana and Jaeger expect to be served under the proxy's paths. On their own
   hostname they may need root-URL settings in the values.
 - Memory: OpenSearch and Kafka are the heavy ones. If pods are `Pending`, check
   `kubectl --context k3d-dev top nodes`. That's usage, but the scheduler places
-  pods by requests: sofka's `:nodes` has `%CPU/R` and `%MEM/R`, the share of
+  pods by requests: sofka's `:nodes` ([lesson 0](00-tools.md)) has `%CPU/R` and `%MEM/R`, the share of
   each node that pods have already asked for.
 - The Kafka consumers lag when the load generator is busy. That's lesson 11.
 

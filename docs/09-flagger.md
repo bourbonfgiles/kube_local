@@ -50,7 +50,8 @@ Load Balancer Controller). Argo Rollouts is the Argo-world equivalent.
 Hubble's `httpV2` metrics, and two podinfo tags in the local registry
 (lesson 7).
 
-**On your machine**: `kubectl`, `helm`, `flux`, `k9s`, `sofka`, `curl`.
+**On your machine**: `kubectl`, `helm`, `flux`, `curl`, and `sofka`
+or `k9s` ([lesson 0](00-tools.md)).
 
 ## Install by hand
 
@@ -124,9 +125,16 @@ weighted split only happens there.
 kubectl --context k3d-dev apply -f scratch/09/canary.yaml
 ```
 
-k9s `:canaries -n canary-demo` until `Initialized`. Then `:deploy -n
-canary-demo` (`podinfo` at 0, `podinfo-primary` running) and `:httproutes -n
-canary-demo` (Flagger's route).
+```sh
+kubectl --context k3d-dev get canaries -n canary-demo -w
+kubectl --context k3d-dev get deploy,httproutes -n canary-demo
+```
+
+Wait for `Initialized`. Then `podinfo` is at 0, `podinfo-primary` is running,
+and the route is Flagger's.
+
+sofka / k9s: `:canaries -n canary-demo`, `:deploy -n canary-demo`,
+`:httproutes -n canary-demo`
 
 ### 4. Release
 
@@ -135,8 +143,9 @@ helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/po
   --version 6.7.1 -n canary-demo --reuse-values --set image.tag=6.7.1
 ```
 
-Watch `:canaries` progress, and `d` on the route to see weights move. In a
-second terminal:
+Watch the Canary progress with the `get canaries -w` above, and the weights
+move with `kubectl --context k3d-dev -n canary-demo get httproute podinfo -o yaml`
+(sofka / k9s: `d` on the route). In a second terminal:
 
 ```sh
 while true; do curl -s -H 'Host: canary.kube.internal' http://10.89.0.200/ | jq -r .version; sleep 1; done
@@ -189,21 +198,20 @@ counts the canary's share of traffic: Flagger's canary pods run as Deployment
 
 </details>
 
-**Where to look**
+When it rolls back, ask why:
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Canary phase and weight | `kubectl --context k3d-dev get canaries -n canary-demo -w` | `:canaries -n canary-demo` | `:canaries -n canary-demo` |
-| Primary and canary | `kubectl --context k3d-dev get deploy -n canary-demo` | `:deploy -n canary-demo` | `:deploy -n canary-demo` |
-| Weights on the route | `kubectl --context k3d-dev -n canary-demo get httproute podinfo -o yaml` | `:httproutes -n canary-demo`, `d` | `:httproutes -n canary-demo`, `d` |
-| Why it rolled back | `kubectl --context k3d-dev -n canary-demo events --for canary/podinfo` | `d` on the Canary | `E` on the Canary |
-| Flagger's own view | `kubectl --context k3d-dev -n flagger-system logs deploy/flagger -f` | `:pods -n flagger-system`, `l` | `:deploy -n flagger-system`, `l` |
+```sh
+kubectl --context k3d-dev -n canary-demo events --for canary/podinfo
+kubectl --context k3d-dev -n flagger-system logs deploy/flagger -f
+```
+
+sofka / k9s: `d` on the Canary; `:pods -n flagger-system`, `l`.
 
 > [!TIP]
-> Open sofka on `:canaries -n canary-demo` before the faulty release. `T` on
-> the Canary records each condition change with a timestamp, `E` gives
-> Flagger's events for each failed check, and `T` on Deployment `podinfo`
-> shows the canary scaling up and back to zero.
+> A sofka extra ([lesson 0](00-tools.md)): open `:canaries -n canary-demo`
+> before the faulty release. `T` on the Canary records each condition change
+> with a timestamp, `E` gives Flagger's events for each failed check, and `T`
+> on Deployment `podinfo` shows the canary scaling up and back to zero.
 
 ### 6. Clean up
 
@@ -267,7 +275,7 @@ Now for the real podinfo, so lesson 8's commits become canaries.
 
 - Flagger takes over the Deployment: traffic goes to `podinfo-primary`, and the
   Deployment you manage sits at zero replicas between releases. Expect that in
-  k9s and sofka.
+  every view of it.
 - Flagger's built-in metrics for `gatewayapi` are written for Envoy's own
   metrics, which Cilium doesn't export. You write your own against Hubble's.
 - Without traffic there's nothing to measure and analysis fails. That's the

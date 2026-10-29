@@ -52,8 +52,9 @@ controllers would use IAM roles for ECR and KMS instead of tokens and keys.
 
 | Tool | Why |
 | --- | --- |
-| `flux` | Install, bootstrap, and everything k9s can't do |
-| `kubectl`, `helm`, `k9s`, `sofka`, `git` | As usual |
+| `flux` | Install, bootstrap, and everything kubectl can't do |
+| `kubectl`, `helm`, `git` | As usual |
+| `sofka` or `k9s` | [Lesson 0](00-tools.md) |
 | A GitHub fine-grained token on `kube_local` | Bootstrap creates a deploy key and commits. Permissions: Administration read/write, Contents read/write, Metadata read |
 
 Check the cluster is ready for Flux:
@@ -73,8 +74,14 @@ This shows what each object does before bootstrap wires them to a repo.
 flux --context k3d-dev install
 ```
 
-k9s `:pods -n flux-system`: four controllers. `:crds` and filter `fluxcd`
-to see the kinds they brought.
+```sh
+kubectl --context k3d-dev get pods -n flux-system
+kubectl --context k3d-dev get crds | grep fluxcd
+```
+
+Four controllers, and the kinds they brought.
+
+sofka / k9s: `:pods -n flux-system`, then `:crds` and `/fluxcd`
 
 ### 2. A chart, the Flux way
 
@@ -117,8 +124,15 @@ spec:
 kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
 ```
 
-Watch it in k9s: `:ocirepositories -A` fetches the chart, `:helmreleases -A`
-installs it, `:pods -n podinfo` runs it.
+```sh
+kubectl --context k3d-dev get ocirepositories,helmreleases -A
+kubectl --context k3d-dev get pods -n podinfo
+```
+
+The OCIRepository fetches the chart, the HelmRelease installs it, and the pods
+run it.
+
+sofka / k9s: `:ocirepositories -A`, `:helmreleases -A`, `:pods -n podinfo`
 
 ### 3. Iterate
 
@@ -128,30 +142,26 @@ it says otherwise:
 | Try | Then look at |
 | --- | --- |
 | Change `ui.message` | `helm --kube-context k3d-dev history podinfo -n podinfo`: a new revision |
-| Add `replicaCount: 3` under `values` | `:pods -n podinfo` |
+| Add `replicaCount: 3` under `values` | `kubectl --context k3d-dev get pods -n podinfo` |
 | `kubectl --context k3d-dev -n podinfo scale deploy podinfo --replicas 1` | It stays at 1: helm-controller only checks its own changes by default |
 | Add `driftDetection: {mode: enabled}` under `spec`, then scale again | Flux puts it back to 3 |
 | `flux --context k3d-dev suspend helmrelease podinfo -n flux-system`, change a value, re-apply | Nothing happens until `flux resume` |
-| Set `ref.tag` to `9.9.9` | `d` on the OCIRepository: the error, and the HelmRelease keeps the last good chart |
+| Set `ref.tag` to `9.9.9` | `kubectl --context k3d-dev -n flux-system describe ocirepository podinfo`: the error, and the HelmRelease keeps the last good chart |
 
-**Where to look**
+sofka / k9s: `d` on the OCIRepository for its error. They differ on Helm and
+Flux actions:
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Controllers | `kubectl --context k3d-dev get pods -n flux-system` | `:pods -n flux-system` | `:pods -n flux-system` |
-| Flux's kinds | `kubectl --context k3d-dev get crds`, look for `fluxcd` | `:crds`, `/fluxcd` | `:crds`, `/fluxcd` |
-| Chart fetched | `kubectl --context k3d-dev get ocirepositories -A` | `:ocirepositories -A` | `:ocirepositories -A` |
-| Release installed | `kubectl --context k3d-dev get helmreleases -A` | `:helmreleases -A` | `:helmreleases -A` |
-| Helm's revisions | `helm --kube-context k3d-dev history podinfo -n podinfo` | `:helm`, `r` on `podinfo` | `⏎` on the HelmRelease |
-| Suspend, resume | `flux --context k3d-dev suspend helmrelease podinfo -n flux-system` | `Shift-t` (plugin) | `t` |
-| Reconcile now | `flux --context k3d-dev reconcile helmrelease podinfo -n flux-system` | `Shift-r` (plugin) | `t` |
-| Why a source failed | `kubectl --context k3d-dev -n flux-system describe ocirepository podinfo` | `d` | `X` |
+- sofka: `⏎` on the HelmRelease for Helm's revisions; `t` to suspend or
+  reconcile.
+- k9s: `:helm`, `r` on `podinfo`; `Shift-t` to suspend, `Shift-r` to
+  reconcile (dotfiles plugins).
 
 > [!TIP]
-> With `ref.tag: 9.9.9`, sofka's `ctrl-z` on `:ocirepositories -A` leaves only
-> the broken source, and `X` gives its `Ready` reason. `:gitops` on the podinfo
-> Deployment walks up to the HelmRelease and its source, with the applied and
-> latest revisions side by side.
+> A sofka extra ([lesson 0](00-tools.md)): with `ref.tag: 9.9.9`, `ctrl-z` on
+> `:ocirepositories -A` leaves only the broken source, and `X` gives its
+> `Ready` reason. `:gitops` on the podinfo Deployment walks up to the
+> HelmRelease and its source, with the applied and latest revisions side by
+> side.
 
 ### 4. Clean up
 
@@ -369,7 +379,8 @@ spec:
    ```sh
    flux --context k3d-dev reconcile kustomization flux-system --with-source
    ```
-4. k9s `:kustomizations -A`, then `:gateways -A`: the Gateway is back, from Git.
+4. `kubectl --context k3d-dev get kustomizations,gateways -A`: the Gateway is
+   back, from Git. sofka / k9s: `:kustomizations -A`, then `:gateways -A`.
 5. The podinfo files above, plus `clusters/dev/apps.yaml` with `apps-base` and
    `apps-local`. Push, then
    `curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message`.
@@ -380,14 +391,14 @@ spec:
    `apps-local` put it back within its interval.
 2. Drift on a chart: delete the podinfo Deployment. It doesn't come back until
    you add `spec.driftDetection.mode: enabled` to the HelmRelease.
-3. Change `replicaCount` in `apps/base/podinfo/values.yaml` and push. Watch
-   `:helmreleases` upgrade.
+3. Change `replicaCount` in `apps/base/podinfo/values.yaml` and push. Watch it upgrade:
+   `kubectl --context k3d-dev get helmreleases -A -w`.
 4. Ask Flux where a pod came from:
    ```sh
    flux --context k3d-dev trace -n podinfo deployment podinfo
    ```
-   The same from a TUI: `Shift-q` on the Deployment in k9s, `:gitops` in
-   sofka.
+   The same from a TUI: sofka `:gitops` on the Deployment; k9s `Shift-q` on
+   it (dotfiles plugin).
 5. Preview a change before pushing:
    ```sh
    flux --context k3d-dev diff kustomization apps-base --path ./apps/base
@@ -412,7 +423,8 @@ release name and namespace takes that release over, so Flux owns the CNI.
    ```sh
    helm --kube-context k3d-dev get values cilium -n kube-system
    ```
-2. Push. `:helmreleases -n kube-system`: `cilium` upgrades to the same values,
+2. Push. `kubectl --context k3d-dev get helmreleases -n kube-system -w`:
+   `cilium` upgrades to the same values,
    and `helm --kube-context k3d-dev history cilium -n kube-system` shows a new
    revision.
 3. From now on the ConfigMaps are the truth. `bootstrap.sh` still installs

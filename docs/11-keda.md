@@ -43,7 +43,8 @@ workers, with the scaler authenticating through an IAM role
 **In the cluster**: the OpenTelemetry Demo in `otel-demo` (lesson 10), and
 `metrics-server` (k3s ships it; `kubectl --context k3d-dev top nodes` works).
 
-**On your machine**: `kubectl`, `helm`, `flux`, `k9s`, `sofka`.
+**On your machine**: `kubectl`, `helm`, `flux`, and `sofka`
+or `k9s` ([lesson 0](00-tools.md)).
 
 ## Install by hand
 
@@ -54,19 +55,29 @@ helm --kube-context k3d-dev upgrade --install keda keda --repo https://kedacore.
   --version 2.21.0 -n keda --create-namespace
 ```
 
-KEDA's defaults are fine. k9s `:pods -n keda`: the operator, the metrics
-apiserver and the admission webhooks.
+KEDA's defaults are fine.
+
+```sh
+kubectl --context k3d-dev get pods -n keda
+```
+
+The operator, the metrics apiserver and the admission webhooks.
+
+sofka / k9s: `:pods -n keda`
 
 ### 2. Find the consumer
 
-k9s `:deploy -n otel-demo`: `accounting` and its replica count. Then the
-topic's partitions, from a shell in the Kafka pod (`:pods -n otel-demo`, `s`
-on `kafka`):
+`kubectl --context k3d-dev get deploy accounting -n otel-demo`: its replica
+count. Then the topic's partitions, from a shell in the Kafka pod:
 
 ```sh
+kubectl --context k3d-dev -n otel-demo exec -it deploy/kafka -- sh
 # in the pod shell
 kafka-topics.sh --describe --topic orders --bootstrap-server localhost:9092
 ```
+
+sofka / k9s: `:deploy -n otel-demo`, then `:pods -n otel-demo`, `s` on
+`kafka`.
 
 If it isn't on the PATH, `find / -name kafka-topics.sh 2>/dev/null`.
 Partitions are the ceiling: one consumer per partition at most.
@@ -99,29 +110,37 @@ spec:
 kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
 ```
 
-`:scaledobjects -n otel-demo` until `READY True`, then `:hpa -n otel-demo`:
-`keda-hpa-accounting`, created for you.
+```sh
+kubectl --context k3d-dev get scaledobjects -n otel-demo -w
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
+```
+
+The ScaledObject goes `READY True`, then `keda-hpa-accounting` appears,
+created for you.
+
+sofka / k9s: `:scaledobjects -n otel-demo`, then `:hpa -n otel-demo`. sofka
+extra ([lesson 0](00-tools.md)): `X` on the ScaledObject if it isn't ready.
 
 ### 4. Iterate
 
 | Try | Then look at |
 | --- | --- |
-| Raise the users at `/loadgen/`, or turn on `kafkaQueueProblems` | The HPA's current value climbs; `:deploy` scales out |
+| Raise the users at `/loadgen/`, or turn on `kafkaQueueProblems` | The HPA's current value climbs; `accounting` scales out |
 | Drop the load | Scale-in after `cooldownPeriod` and the HPA's own stabilisation |
 | `lagThreshold: "2"` | Scales out much sooner |
 | `maxReplicaCount` above the partition count | The extra consumers sit idle; lag doesn't fall faster |
 | `minReplicaCount: 0` | It scales to zero when idle. Work out what happens to orders meanwhile. |
 
-**Where to look**
+Scaling as it happens, and what the operator thinks of it:
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| KEDA's pods | `kubectl --context k3d-dev get pods -n keda` | `:pods -n keda` | `:pods -n keda` |
-| A shell in Kafka | `kubectl --context k3d-dev -n otel-demo exec -it deploy/kafka -- sh` | `:pods -n otel-demo`, `s` on `kafka` | The same |
-| ScaledObject ready | `kubectl --context k3d-dev get scaledobjects -n otel-demo` | `:scaledobjects -n otel-demo` | `:scaledobjects -n otel-demo`, `X` if not |
-| The HPA KEDA made | `kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w` | `:hpa -n otel-demo` | `:hpa -n otel-demo` |
-| Scaling as it happens | `kubectl --context k3d-dev -n otel-demo get deploy accounting -w` | `:deploy -n otel-demo` | `T` on `accounting`: each replica change, timestamped |
-| What the operator says | `kubectl --context k3d-dev -n keda logs deploy/keda-operator -f` | `:pods -n keda`, `l` on `keda-operator` | `:deploy -n keda`, `l` on `keda-operator`, `ctrl-z` |
+```sh
+kubectl --context k3d-dev -n otel-demo get deploy accounting -w
+kubectl --context k3d-dev -n keda logs deploy/keda-operator -f
+```
+
+sofka / k9s: `:deploy -n otel-demo`; `:pods -n keda`, `l` on `keda-operator`.
+sofka extras: `T` on `accounting` timestamps each replica change, and
+`ctrl-z` in the logs leaves only the errors.
 
 ### 5. Clean up
 
@@ -148,7 +167,7 @@ meanwhile.
 
 ## Exercises
 
-1. Explain the numbers in `d` on the HPA: target, current, and how KEDA turned
+1. Explain the numbers in `describe hpa` (or `d`): target, current, and how KEDA turned
    lag into them.
 2. Add a second trigger, `cron`, holding 2 replicas during "business hours".
    KEDA takes the maximum of all triggers.
@@ -166,7 +185,7 @@ meanwhile.
 - Consumers beyond the partition count do nothing.
 - A wrong `bootstrapServers` or `consumerGroup` doesn't fail loudly: the
   ScaledObject goes not-ready and the reason is in the keda-operator's logs.
-  sofka's `X` on the ScaledObject shows its `Ready` message first, which is
+  sofka's `X` on the ScaledObject ([lesson 0](00-tools.md)) shows its `Ready` message first, which is
   often enough.
 
 ## Links

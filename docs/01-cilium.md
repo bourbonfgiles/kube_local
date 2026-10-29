@@ -64,9 +64,11 @@ an ALB. The `Gateway` and `HTTPRoute` objects are the same either way; only the
 **In the cluster**
 
 - `cilium --context k3d-dev status` is all green.
-- k9s `:gatewayclasses` shows `cilium` with `ACCEPTED True`.
+- `kubectl --context k3d-dev get gatewayclasses` shows `cilium` with
+  `ACCEPTED True`.
 
-**On your machine**: `kubectl`, `helm`, `cilium`, `hubble`, `k9s`, `sofka`, `curl`.
+**On your machine**: `kubectl`, `helm`, `cilium`, `hubble`, `curl`, and
+`sofka` or `k9s` ([lesson 0](00-tools.md)).
 
 ## Look around first
 
@@ -76,13 +78,14 @@ What `bootstrap.sh` turned on:
 cilium --context k3d-dev config view | grep -iE 'gateway|kube-proxy|l2'
 ```
 
-The Service table that replaces kube-proxy. In k9s, `:pods -n kube-system`,
-pick a `cilium-` pod (not the operator), `s`:
+The Service table that replaces kube-proxy, from inside a Cilium agent:
 
 ```sh
-# in the pod shell
-cilium-dbg service list
+kubectl --context k3d-dev -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg service list
 ```
+
+sofka / k9s: `:pods -n kube-system`, `s` on a `cilium-` pod (not the
+operator), then `cilium-dbg service list`.
 
 Each ClusterIP and its backends, in an eBPF map instead of iptables.
 
@@ -112,7 +115,13 @@ helm --kube-context k3d-dev install green oci://ghcr.io/stefanprodan/charts/podi
   --version 6.7.1 -n demo --set ui.message=green
 ```
 
-k9s `:svc -n demo` shows `blue-podinfo` and `green-podinfo` on port 9898.
+```sh
+kubectl --context k3d-dev get svc -n demo
+```
+
+`blue-podinfo` and `green-podinfo` on port 9898.
+
+sofka / k9s: `:svc -n demo`
 
 ### 2. A Gateway
 
@@ -141,11 +150,14 @@ spec:
 
 ```sh
 kubectl --context k3d-dev apply -f scratch/01/gateway.yaml
+kubectl --context k3d-dev get gateways -A -w
 ```
 
-k9s `:gateways -A` until `PROGRAMMED True` with an address, usually
-`10.89.0.200`. `:svc -n gateway` shows the LoadBalancer Service Cilium created
-for it.
+Wait for `PROGRAMMED True` with an address, usually `10.89.0.200`.
+`kubectl --context k3d-dev get svc -n gateway` shows the LoadBalancer Service
+Cilium created for it.
+
+sofka / k9s: `:gateways -A`, then `:svc -n gateway`
 
 ### 3. A route, one step at a time
 
@@ -250,16 +262,16 @@ done | sort | uniq -c
 Watch the requests in `hubble observe -f`. The source shows as `(ingress)`:
 that's Cilium's Envoy, not your machine.
 
-**Where to look**
+When a `curl` surprises you, read the route's conditions under each parent
+Gateway, and its rules:
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| GatewayClass accepted | `kubectl --context k3d-dev get gatewayclasses` | `:gatewayclasses` | `:gatewayclasses` |
-| Cilium's service map | `kubectl --context k3d-dev -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg service list` | `:pods -n kube-system`, `s` on a `cilium-` pod | The same |
-| Backends | `kubectl --context k3d-dev get svc -n demo` | `:svc -n demo` | `:svc -n demo` |
-| Gateway programmed, with an address | `kubectl --context k3d-dev get gateways -A` | `:gateways -A` | `:gateways -A` |
-| Route conditions | `kubectl --context k3d-dev -n demo describe httproute demo` | `d` on the route | `d` on the route |
-| Which paths a route matches | `kubectl --context k3d-dev -n demo get httproute demo -o yaml` | `y` | `:httproutes -n demo`: the `ROUTES` column |
+```sh
+kubectl --context k3d-dev -n demo describe httproute demo
+kubectl --context k3d-dev -n demo get httproute demo -o yaml
+```
+
+sofka / k9s: `:httproutes -n demo`, `d` for conditions, `y` for the YAML.
+sofka also lists the matched paths in its `ROUTES` column.
 
 ### 4. Clean up
 
@@ -277,7 +289,7 @@ Not yet: [lesson 2](02-flux.md) installs Flux and puts this Gateway in Git.
 
 ## Exercises
 
-1. Explain each condition on the route (`d` in k9s): `Accepted` and
+1. Explain each condition on the route (`describe`, or `d`): `Accepted` and
    `ResolvedRefs`.
 2. Break it on purpose: set the route's `parentRefs` namespace to `default`.
    `curl` gets a 404; find the reason in the route's status.
@@ -296,14 +308,16 @@ Not yet: [lesson 2](02-flux.md) installs Flux and puts this Gateway in Git.
 ## Where it gets hard
 
 - A route that doesn't attach shows nothing in `curl`, only a 404. The reason
-  is always in the route's status, under each parent Gateway. sofka's `X`
-  doesn't read that; use `d`.
+  is always in the route's status, under each parent Gateway: `describe`
+  shows it. sofka's Explain (`X`, [lesson 0](00-tools.md)) doesn't read route
+  status.
 - `curl` without the `Host` header gets a 404 from Envoy: no route matches.
 - Rule precedence isn't file order. The longest path match wins, then the
   rule with the most header matches. Two rules matching the same request is
   legal and confusing.
 - Cilium only enables Gateway API if its CRDs existed when the operator
-  started. If `:gatewayclasses` is empty, see the repo README's
+  started. If `kubectl --context k3d-dev get gatewayclasses` is
+  empty, see the repo README's
   Troubleshooting table.
 
 ## Links

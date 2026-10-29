@@ -49,8 +49,9 @@ below mirrors.
 
 - Flux bootstrapped with
   `--components-extra image-reflector-controller,image-automation-controller`
-  and `--read-write-key` (lesson 2). k9s `:deploy -n flux-system` lists both
-  image controllers. If they're missing, a read-only deploy key can't be
+  and `--read-write-key` (lesson 2).
+  `kubectl --context k3d-dev get deploy -n flux-system` lists both image
+  controllers. If they're missing, a read-only deploy key can't be
   upgraded in place:
   ```sh
   kubectl --context k3d-dev -n flux-system delete secret flux-system
@@ -58,7 +59,8 @@ below mirrors.
   then rerun lesson 2's bootstrap command with both flags.
 - podinfo `6.7.0` running from the local registry (lesson 7).
 
-**On your machine**: `skopeo`, `flux`, `kubectl`, `git`, `k9s`, `sofka`.
+**On your machine**: `skopeo`, `flux`, `kubectl`, `git`, and `sofka`
+or `k9s` ([lesson 0](00-tools.md)).
 
 ## Install by hand
 
@@ -95,8 +97,12 @@ kubectl --context k3d-dev apply -f scratch/08/image.yaml
 flux --context k3d-dev get images all -n flux-system
 ```
 
-k9s `:imagerepositories -n flux-system` shows the tags it found;
-`:imagepolicies -n flux-system` the one it picked.
+The tags it found, and the one each policy picked. To scan again now:
+`flux --context k3d-dev reconcile image repository podinfo-test -n flux-system`.
+
+sofka / k9s: `:imagerepositories -n flux-system`, `d` for the tags;
+`:imagepolicies -n flux-system` for the pick. Scan now: sofka `t`; k9s
+`Shift-r` (dotfiles plugin).
 
 ### Iterate
 
@@ -114,16 +120,6 @@ skopeo copy --all --dest-tls-verify=false \
   docker://ghcr.io/stefanprodan/podinfo:6.7.1 \
   docker://localhost:5050/podinfo:6.8.0-rc.1
 ```
-
-**Where to look**
-
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Image controllers | `kubectl --context k3d-dev get deploy -n flux-system` | `:deploy -n flux-system` | `:deploy -n flux-system` |
-| Tags found | `flux --context k3d-dev get images all -n flux-system` | `:imagerepositories -n flux-system`, `d` | `:imagerepositories -n flux-system`, `d` |
-| Tag picked | `kubectl --context k3d-dev get imagepolicies -n flux-system` | `:imagepolicies -n flux-system` | `:imagepolicies -n flux-system` |
-| Scan now | `flux --context k3d-dev reconcile image repository podinfo-test -n flux-system` | `Shift-r` (plugin) | `t` |
-| The rollout after Flux's commit (Flux part) | `kubectl --context k3d-dev -n podinfo rollout status deploy/podinfo` | `:pods -n podinfo` | `:rollout-history` on the Deployment: one revision per commit |
 
 ### Clean up
 
@@ -184,8 +180,13 @@ registry and this cluster's branch.
        strategy: Setters
    ```
 3. Push. From now on, `git pull` before every commit: Flux commits too.
-4. **Release**: mirror `6.7.1` (lesson 7). Watch `:imagepolicies -n podinfo`,
-   then Flux's commit on GitHub, then `:pods -n podinfo` rolling.
+4. **Release**: mirror `6.7.1` (lesson 7). Watch
+   `kubectl --context k3d-dev get imagepolicies -n podinfo -w`, then Flux's
+   commit on GitHub, then
+   `kubectl --context k3d-dev -n podinfo rollout status deploy/podinfo`.
+   sofka / k9s: `:imagepolicies -n podinfo`, then `:pods -n podinfo`. sofka
+   extra ([lesson 0](00-tools.md)): `:rollout-history` on the Deployment has
+   one revision per Flux commit.
 
 ## Exercises
 

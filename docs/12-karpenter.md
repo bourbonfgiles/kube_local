@@ -47,7 +47,7 @@ learn here carry over unchanged.
 **In the cluster**: the local registry (lesson 7), and Flux for the Flux part.
 
 **On your machine**: `git`, `go`, `ko`, `kwok`, `make`, `kubectl`, `helm`,
-`flux`, `k9s`, `sofka`.
+`flux`, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
 
 ## Install by hand
 
@@ -188,8 +188,15 @@ kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml -f scratch/12/inflat
 kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
 ```
 
-k9s `:nodeclaims` and `:nodes`: nodes appear. `d` on a NodeClaim shows the
-instance type Karpenter chose and why.
+```sh
+kubectl --context k3d-dev get nodeclaims,nodes -w
+kubectl --context k3d-dev describe nodeclaim <name>
+```
+
+Nodes appear, and each NodeClaim shows the instance type Karpenter chose and
+why.
+
+sofka / k9s: `:nodeclaims`, `:nodes`, `d` on a NodeClaim
 
 ### 7. Iterate
 
@@ -200,21 +207,24 @@ instance type Karpenter chose and why.
 | `limits.cpu: 8`, scale to 20 | Some pods stay `Pending`; the NodeClaim events say the limit was hit |
 | A disruption `budgets` entry `nodes: "1"` | Consolidation removes one node at a time |
 
-**Where to look**
+When pods stay `Pending`, find them, ask why, and see what each node has
+promised and what Karpenter thinks:
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Nodes appearing | `kubectl --context k3d-dev get nodeclaims,nodes -w` | `:nodeclaims`, `:nodes` | `:nodeclaims`, `:nodes` |
-| Why that instance type | `kubectl --context k3d-dev describe nodeclaim <name>` | `d` | `d` |
-| Pods still `Pending` | `kubectl --context k3d-dev -n default get pods --field-selector=status.phase=Pending` | `:pods -n default`, `ctrl-z` | `:pods -n default`, `ctrl-z` |
-| Why a pod is `Pending` | `kubectl --context k3d-dev -n default describe pod <name>` | `d` | `X` |
-| What each node has promised | `kubectl --context k3d-dev describe node <name>`, Allocated resources | `d` on the node | `:nodes`: `%CPU/R` |
-| Karpenter's reasoning | `kubectl --context k3d-dev -n kube-system logs deploy/karpenter -f` | `:pods -n kube-system`, `l` on `karpenter` | `:deploy -n kube-system`, `l` on `karpenter` |
+```sh
+kubectl --context k3d-dev -n default get pods --field-selector=status.phase=Pending
+kubectl --context k3d-dev -n default describe pod <name>
+kubectl --context k3d-dev describe node <name>     # Allocated resources
+kubectl --context k3d-dev -n kube-system logs deploy/karpenter -f
+```
+
+sofka / k9s: `ctrl-z` on `:pods -n default`, `d` on a pod or node;
+`:pods -n kube-system`, `l` on `karpenter`. sofka extras: `X` on a pod, and
+`:nodes` has `%CPU/R`.
 
 > [!TIP]
-> sofka's `X` on a node checks Ready, cordon, taints and pod capacity. On a
-> fake node it shows the `kwok` taint, and during consolidation, the cordon
-> Karpenter put on before draining it.
+> A sofka extra ([lesson 0](00-tools.md)): `X` on a node checks Ready,
+> cordon, taints and pod capacity. On a fake node it shows the `kwok` taint,
+> and during consolidation, the cordon Karpenter put on before draining it.
 
 ### 8. Clean up
 
