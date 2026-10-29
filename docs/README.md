@@ -1,6 +1,6 @@
 # Learning path
 
-Fourteen lessons on top of the platform. Each one installs an upstream product,
+Fourteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product,
 first by hand so you can see what it does, then through Flux so Git owns it.
 You write manifests and values, never application code.
 
@@ -11,18 +11,19 @@ You write manifests and values, never application code.
 | **What it is** | The product: the problem it solves, how it works, the objects it adds. A diagram where it helps. |
 | **On EKS** | What you'd run there instead, and what changes. |
 | **Requirements** | What must already be in the cluster, and the tools you need on your machine. |
-| **Install by hand** | `helm` and `kubectl apply -f` against files in `scratch/`. Small YAML files you edit and re-apply to see what each field does. Cleaned up at the end. |
+| **Install by hand** | `helm` and `kubectl apply -f` against files in `scratch/`. Small YAML files you edit and re-apply to see what each field does. A **Where to look** table gives each check in kubectl, k9s and sofka. Cleaned up at the end. |
 | **Install with Flux** | The same thing as files in the repo layout, committed and reconciled. |
 | **Exercises** | Easy first, hardest last. |
 | **Where it gets hard** | The failure modes, and how they show themselves. |
 
 Lessons 1 and 2 are the exception: lesson 1 has no Flux yet, and lesson 2 is
-Flux itself.
+Flux itself. Lesson 0 is a reference for the three tools you look with.
 
 ## Lessons
 
 | # | Lesson | You end up with | Needs |
 | --- | --- | --- | --- |
+| 0 | [kubectl, k9s and sofka](00-tools.md) | Every check three ways; sofka's troubleshooting views | Platform |
 | 1 | [Cilium and Gateway API](01-cilium.md) | A Gateway and routes, Hubble flows | Platform |
 | 2 | [Flux](02-flux.md) | This repo syncing the cluster; podinfo from Git | 1 |
 | 3 | [ExternalDNS](03-external-dns.md) | Routes get real `*.kube.internal` names | 2 |
@@ -53,12 +54,13 @@ mistake:
 | `kubectl`, `flux`, `cilium` | `--context k3d-dev` |
 | `helm` | `--kube-context k3d-dev` |
 | `k9s` | `k9s --context k3d-dev` |
+| `sofka` | `sofka --context k3d-dev` |
 
 `hubble` takes no context: it talks to the port-forward that
 `cilium --context k3d-dev hubble port-forward` opens. `dig`, `curl`, `skopeo`,
 `sops` and `mkcert` don't talk to the Kubernetes API at all.
 
-A pod shell is k9s `s` on the pod. Lesson 12 also works in a clone of the
+A pod shell is `s` on the pod in k9s or sofka. Lesson 12 also works in a clone of the
 Karpenter repo; its blocks say so.
 
 ## Tools on your machine
@@ -68,7 +70,7 @@ lesson lists the ones it needs.
 
 | Tool | Lessons | Comes from |
 | --- | --- | --- |
-| `kubectl`, `helm`, `k9s` | All | dotfiles brewfile |
+| `kubectl`, `helm`, `k9s`, `sofka` | All | dotfiles brewfile |
 | `cilium`, `hubble` | 1, 6 | dotfiles brewfile |
 | `flux` | 2 onwards | dotfiles brewfile (`fluxcd/tap`) |
 | `git`, `curl`, `jq` | All | dotfiles brewfile |
@@ -106,30 +108,35 @@ A chart's values file becomes a ConfigMap that the HelmRelease reads.
 [Lesson 2](02-flux.md#how-this-repo-is-laid-out) explains the layout and
 that mapping.
 
-## Working in k9s
+## Working in k9s and sofka
 
-Every object in these lessons has a k9s view: `:` then the resource's plural
-name (`:gateways`, `:httproutes`, `:helmreleases`, `:certificates`).
+Every object in these lessons has a view in both: `:` then the resource's
+plural name (`:gateways`, `:httproutes`, `:helmreleases`, `:certificates`).
+The lessons write k9s; the same keys work in sofka unless the table says
+otherwise. [Lesson 0](00-tools.md) has the full side by side, with kubectl.
 
-| Key | Does |
-| --- | --- |
-| `d` | Describe. Status and events are where failures explain themselves. |
-| `l` | Logs |
-| `s` | Shell in the container |
-| `x` | Decode a Secret |
-| `Shift-f` | Port-forward, for UIs such as Grafana |
-| `:xray deploy <ns>` | Dependency tree of a namespace |
+| Does | k9s | sofka |
+| --- | --- | --- |
+| Describe. Status and events are where failures explain themselves. | `d` | `d` |
+| Why it's unhealthy, with the evidence | | `X` |
+| What changed while you watched | | `T`, `:diff` |
+| Logs, previous container's logs | `l`, `p` | `l`, `p` |
+| Shell in the container | `s` | `s` |
+| Decode a Secret | `x` | `x` |
+| Port-forward, for UIs such as Grafana | `Shift-f` | `f` or `Shift-f` |
+| Only what's broken | `ctrl-z` | `ctrl-z` |
+| Dependency tree | `:xray deploy <ns>` | `:deploy -n <ns>`, then `:xray` |
+| Flux reconcile, suspend, resume | dotfiles plugins: `Shift-r`, `Shift-t` | `t` |
+| Flux ownership chain | `Shift-q` (plugin, runs `flux trace`) | `:gitops` |
 
-On Flux views, the dotfiles k9s plugins add reconcile, suspend and resume; the
-key hints at the top of the screen list them. The `flux` CLI covers the rest:
-`flux trace`, `flux diff`, `flux events`.
+The `flux` CLI covers the rest: `flux diff`, `flux events`.
 
 ## Ground rules
 
 - Once something is in Git, change it through Git. Flux reverts manual edits.
 - Pin every chart and image version. `helm search repo <repo>/<chart>` or
   `helm show chart <oci url>` gives the latest.
-- When something's stuck: `d` on it in k9s, then
+- When something's stuck: `d` on it in k9s, or `X` in sofka, then
   `flux --context k3d-dev events -A`. The repo README's Troubleshooting table
   covers the platform.
 
