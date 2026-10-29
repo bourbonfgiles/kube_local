@@ -44,7 +44,8 @@ service.
 
 | Tool | Why |
 | --- | --- |
-| `kubectl`, `helm`, `flux`, `k9s`, `sofka`, `git` | As usual |
+| `kubectl`, `helm`, `flux`, `git` | As usual |
+| `sofka` or `k9s` | [Lesson 0](00-tools.md) |
 | `bpftrace`, BCC tools in `/usr/share/bcc/tools/` | Profiling. The dotfiles `bpf` step, then a reboot. |
 | A Minecraft Java client | Joining |
 
@@ -84,38 +85,48 @@ helm --kube-context k3d-dev upgrade --install minecraft minecraft \
   -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
 ```
 
-k9s `:pods -n minecraft`, `l`: the first start downloads the server jar, so
-pods need working external DNS. When it logs `Done`, join from a client at
-this machine's LAN address, port 25565.
+```sh
+kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
+```
+
+The first start downloads the server jar, so pods need working external DNS.
+When it logs `Done`, join from a client at this machine's LAN address, port
+25565.
+
+sofka / k9s: `:pods -n minecraft`, `l`
 
 ### 3. The console
 
-k9s `s` on the pod:
-
 ```sh
-# in the pod shell
-rcon-cli list
-rcon-cli tps
+kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli list
+kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
 ```
+
+sofka / k9s: `s` on the pod, then `rcon-cli list` and `rcon-cli tps`.
 
 ### 4. Iterate
 
 | Try | Then look at |
 | --- | --- |
 | `memory: 1024M` | Startup time and `rcon-cli tps` under load |
-| `limits.memory` below heap plus overhead (`2304Mi` with a 2048M heap) | An OOM kill under load: `d` on the pod shows `OOMKilled` |
+| `limits.memory` below heap plus overhead (`2304Mi` with a 2048M heap) | An OOM kill under load: `describe pod` shows `OOMKilled` under `Last State` |
 | Delete the pod | The world survives on the PVC |
 | `helm uninstall` then reinstall | Does the world survive? Check the PVC's reclaim behaviour |
 
-**Where to look**
+Memory against the limit, and the world on its PVC:
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Server log, until `Done` | `kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f` | `:pods -n minecraft`, `l` | `:pods -n minecraft`, `l` |
-| The console | `kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli list` | `s` on the pod | `s` on the pod |
-| Memory against the limit | `kubectl --context k3d-dev -n minecraft top pod` | `:pods -n minecraft`, `%MEM/L` | `⏎` on the pod: memory as a share of request and limit, with a five-minute trend |
-| An OOM kill | `kubectl --context k3d-dev -n minecraft describe pod <name>`, `Last State` | `d` | `X`: `OOMKilled` |
-| The world on the PVC | `kubectl --context k3d-dev get pvc -n minecraft` | `:pvc -n minecraft` | `x` on the PVC: browse its files through the server pod |
+```sh
+kubectl --context k3d-dev -n minecraft top pod
+kubectl --context k3d-dev get pvc -n minecraft
+```
+
+sofka / k9s: `d` on the pod for `OOMKilled`; `:pvc -n minecraft`. They differ
+on memory:
+
+- sofka: `⏎` on the pod shows memory as a share of request and limit, with a
+  five-minute trend; `X` says `OOMKilled`; `x` on the PVC browses its files
+  through the server pod ([lesson 0](00-tools.md)).
+- k9s: the `%MEM/L` column in `:pods -n minecraft`.
 
 ### 5. Clean up
 
@@ -174,7 +185,7 @@ This is the hard part, so it comes last. All of it runs on your machine.
    ```
 6. Watch an OOM kill as it happens: lower the memory limit in base values,
    push, add load, and run `sudo /usr/share/bcc/tools/oomkill`. Compare what
-   the cluster records: sofka's `X` on the pod says `OOMKilled`, `oomkill`
+   the cluster records: `describe pod` (or sofka's `X`) says `OOMKilled`, `oomkill`
    says which process the kernel chose and how big it was.
 
 ## Exercises

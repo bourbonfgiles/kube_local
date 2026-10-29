@@ -43,7 +43,8 @@ containerd at its default socket, so the k3s socket setting below goes away.
 **In the cluster**: Flux (lesson 2) and something worth breaking: the
 OpenTelemetry Demo (lesson 10) shows failures clearly in Jaeger and Grafana.
 
-**On your machine**: `kubectl`, `helm`, `flux`, `git`, `k9s`, `sofka`.
+**On your machine**: `kubectl`, `helm`, `flux`, `git`, and `sofka`
+or `k9s` ([lesson 0](00-tools.md)).
 
 ## Install by hand
 
@@ -63,9 +64,16 @@ helm --kube-context k3d-dev upgrade --install chaos-mesh chaos-mesh --repo https
   --version 2.8.5 -n chaos-mesh --create-namespace -f scratch/14/values-local.yaml
 ```
 
-k9s `:pods -n chaos-mesh`: the controller, the dashboard, and a
-`chaos-daemon` on every node. `Shift-f` on `chaos-dashboard` port 2333 for
-the UI.
+```sh
+kubectl --context k3d-dev get pods -n chaos-mesh
+kubectl --context k3d-dev -n chaos-mesh port-forward svc/chaos-dashboard 2333
+```
+
+The controller, the dashboard, and a `chaos-daemon` on every node. The UI is
+on <http://localhost:2333>.
+
+sofka / k9s: `:pods -n chaos-mesh`; forward on `:svc -n chaos-mesh` with sofka
+`f`, k9s `Shift-f`.
 
 ### 2. One experiment, once
 
@@ -91,8 +99,16 @@ spec:
 kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
 ```
 
-k9s `:pods -n otel-demo`: a `cart` pod restarts. `d` on the PodChaos shows the
-record. Delete it before applying again: a one-off experiment runs once.
+```sh
+kubectl --context k3d-dev get pods -n otel-demo -w
+kubectl --context k3d-dev -n otel-demo describe podchaos kill-one
+```
+
+A `cart` pod restarts, and the PodChaos shows the record.
+
+sofka / k9s: `:pods -n otel-demo`, `d` on the PodChaos.
+
+Delete it before applying again: a one-off experiment runs once.
 
 ### 3. Iterate
 
@@ -129,26 +145,23 @@ spec:
 
 </details>
 
-Check the label in `:pods -n otel-demo` (`d`, Labels) if a selector matches
-nothing.
+If a selector matches nothing, check the label:
 
-**Where to look**
+```sh
+kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart
+kubectl --context k3d-dev get events -n otel-demo --sort-by=.lastTimestamp
+```
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Chaos Mesh up | `kubectl --context k3d-dev get pods -n chaos-mesh` | `:pods -n chaos-mesh` | `:pods -n chaos-mesh` |
-| The dashboard | `kubectl --context k3d-dev -n chaos-mesh port-forward svc/chaos-dashboard 2333` | `:svc -n chaos-mesh`, `Shift-f` | `:svc -n chaos-mesh`, `f` |
-| The experiment's record | `kubectl --context k3d-dev -n otel-demo describe podchaos kill-one` | `d` | `d` |
-| What a selector matches | `kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart` | `:pods -n otel-demo`, `/-l app.kubernetes.io/component=cart` | The same |
-| What broke, in order | `kubectl --context k3d-dev get events -n otel-demo --sort-by=.lastTimestamp` | `:events -n otel-demo` | `T` on `cart`'s Deployment |
-| Schedules (Flux part) | `kubectl --context k3d-dev get schedules -n chaos` | `:schedules -n chaos` | `:schedules -n chaos` |
-| Suspend the `chaos` Kustomization (exercise 3) | `flux --context k3d-dev suspend kustomization chaos` | `Shift-t` (plugin) | `t` |
+The second is what broke, in order.
+
+sofka / k9s: `:pods -n otel-demo`, `/-l app.kubernetes.io/component=cart`.
+What broke: sofka `T` on `cart`'s Deployment; k9s `:events -n otel-demo`.
 
 > [!TIP]
-> This is where sofka's timeline earns its keep. Open `:workloads otel-demo`
-> before you flip the switch: `ctrl-z` keeps only what's hurt right now, `T`
-> on a Deployment says when it lost pods and when it had them back, and
-> `:bundle` on it writes the incident up for you.
+> A sofka extra ([lesson 0](00-tools.md)), and where its timeline earns its
+> keep. Open `:workloads otel-demo` before you flip the switch: `ctrl-z` keeps
+> only what's hurt right now, `T` on a Deployment says when it lost pods and
+> when it had them back, and `:bundle` on it writes the incident up for you.
 
 ### 4. Clean up
 
@@ -222,7 +235,8 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
    Plus `chaos/namespace.yaml` for `chaos`, and `chaos/latency.yaml`: the
    NetworkChaos from above as `type: NetworkChaos` with
    `schedule: "@every 15m"`.
-4. Push. `:schedules -n chaos` shows them, paused.
+4. Push. `kubectl --context k3d-dev get schedules -n chaos` shows them, paused.
+   sofka / k9s: `:schedules -n chaos`.
 
 > [!WARNING]
 > Don't `kubectl apply` files from `chaos/` by hand. Without Flux, the
@@ -232,7 +246,8 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
 
 ## Exercises
 
-1. Flip `CHAOS_PAUSED` to `"false"` and push. Watch `:pods -n otel-demo`, the
+1. Flip `CHAOS_PAUSED` to `"false"` and push. Watch
+   `kubectl --context k3d-dev get pods -n otel-demo -w`, the
    dashboard's timeline and Jaeger. Flip it back: no new experiments start;
    running ones finish their `duration`.
 2. A `StressChaos` schedule burning CPU in one service, and find it in
@@ -243,7 +258,8 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
    kubectl --context k3d-dev -n chaos annotate schedules --all \
      experiment.chaos-mesh.org/pause=true --overwrite
    ```
-   Fix Git, then `flux --context k3d-dev resume kustomization chaos`.
+   Fix Git, then `flux --context k3d-dev resume kustomization chaos`. To
+   suspend from a TUI: sofka `t`; k9s `Shift-t` (dotfiles plugin).
 4. Harder: decide which demo services cope with losing a pod and which don't,
    then fix one with `replicas: 2` and a PodDisruptionBudget in its values, and
    prove it with the same experiment.
