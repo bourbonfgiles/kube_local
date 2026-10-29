@@ -67,19 +67,20 @@ sofka / k9s: `:pods -n keda`
 
 ### 2. Find the consumer
 
-`kubectl --context k3d-dev get deploy accounting -n otel-demo`: its replica
-count. Then the topic's partitions, from a shell in the Kafka pod:
+Its replica count, then the topic's partitions. The Kafka tools live in
+`/opt/kafka/bin`, which isn't on the image's PATH:
 
 ```sh
-kubectl --context k3d-dev -n otel-demo exec -it deploy/kafka -- sh
-# in the pod shell
-kafka-topics.sh --describe --topic orders --bootstrap-server localhost:9092
+kubectl --context k3d-dev get deploy accounting -n otel-demo
+kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
+  /opt/kafka/bin/kafka-topics.sh --describe --topic orders --bootstrap-server localhost:9092
+kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
+  /opt/kafka/bin/kafka-consumer-groups.sh --list --bootstrap-server localhost:9092
 ```
 
 sofka / k9s: `:deploy -n otel-demo`, then `:pods -n otel-demo`, `s` on
 `kafka`.
 
-If it isn't on the PATH, `find / -name kafka-topics.sh 2>/dev/null`.
 Partitions are the ceiling: one consumer per partition at most.
 
 ### 3. The ScaledObject
@@ -239,7 +240,7 @@ spec:
 kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
 kubectl --context k3d-dev -n otel-demo get deploy accounting -w
 kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
-  kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
+  /opt/kafka/bin/kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
 ```
 
 The extra consumers sit idle, with no partition next to them, and lag doesn't
