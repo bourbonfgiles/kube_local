@@ -59,9 +59,9 @@ k9s 0.51.0.
 | --- | --- | --- | --- |
 | Start | `kubectl --context k3d-dev ...` | `k9s --context k3d-dev` | `sofka --context k3d-dev` |
 | In a namespace | `-n podinfo` | `k9s --context k3d-dev -n podinfo` | `sofka --context k3d-dev -n podinfo` |
-| Open a view | `get helmreleases -A` | `k9s --context k3d-dev -c helmreleases` | `sofka --context k3d-dev helmreleases -A` |
+| Open a view | `kubectl --context k3d-dev get helmreleases -A` | `k9s --context k3d-dev -c helmreleases` | `sofka --context k3d-dev helmreleases -A` |
 | No writes | n/a | `--readonly` | `--readonly` |
-| Check the connection | `cluster-info` | | `sofka --context k3d-dev --check` |
+| Check the connection | `kubectl --context k3d-dev cluster-info` | | `sofka --context k3d-dev --check` |
 
 sofka can also bring your k9s setup across. Look before you write anything:
 
@@ -77,29 +77,28 @@ plugins.
 
 | Do | kubectl | k9s | sofka |
 | --- | --- | --- | --- |
-| List | `get pods -n podinfo` | `:pods -n podinfo` | `:pods -n podinfo` |
+| List | `kubectl --context k3d-dev get pods -n podinfo` | `:pods -n podinfo` | `:pods -n podinfo` |
 | All namespaces | `-A` | `0` | `0` |
 | Switch namespace | `-n <ns>` | `:ns`, then `⏎` | `n` |
-| Custom resources | `get crds`, then `get <plural>` | `:crds`, `⏎` on one | `:crds`, `⏎` on one |
-| Describe | `describe pod <name>` | `d` | `d` |
-| YAML | `get pod <name> -o yaml` | `y` | `y` |
-| Events for an object | `events --for pod/<name>` | `:events`, filter | `E` |
-| Logs, follow | `logs -f deploy/<name>` | `l` | `l` |
-| Previous container's logs | `logs -p <pod>` | `p` | `p` |
-| Shell | `exec -it <pod> -- sh` | `s` | `s` |
-| Port-forward | `port-forward svc/<name> 9090` | `Shift-f`, `:pf` to manage | `f` or `Shift-f`, `:pf` to manage |
-| Decode a Secret | `get secret <name> -o jsonpath=...` piped to `base64 -d` | `x` | `x` |
-| Owner | `get pod <name> -o jsonpath='{.metadata.ownerReferences}'` | `Shift-j` | `J` |
-| Restart a workload | `rollout restart deploy/<name>` | `r` | `r` |
+| Custom resources | `kubectl --context k3d-dev get crds` | `:crds`, `⏎` on one | `:crds`, `⏎` on one |
+| Describe | `kubectl --context k3d-dev describe pod <name>` | `d` | `d` |
+| YAML | `kubectl --context k3d-dev get pod <name> -o yaml` | `y` | `y` |
+| Events for an object | `kubectl --context k3d-dev events --for pod/<name>` | `:events`, filter | `E` |
+| Logs, follow | `kubectl --context k3d-dev logs -f deploy/<name>` | `l` | `l` |
+| Previous container's logs | `kubectl --context k3d-dev logs -p <pod>` | `p` | `p` |
+| Shell | `kubectl --context k3d-dev exec -it <pod> -- sh` | `s` | `s` |
+| Port-forward | `kubectl --context k3d-dev port-forward svc/<name> 9090` | `Shift-f`, `:pf` to manage | `f` or `Shift-f`, `:pf` to manage |
+| Decode a Secret | `kubectl --context k3d-dev get secret <name> -o jsonpath=...` piped to `base64 -d` | `x` | `x` |
+| Owner | `kubectl --context k3d-dev get pod <name> -o jsonpath='{.metadata.ownerReferences}'` | `Shift-j` | `J` |
+| Restart a workload | `kubectl --context k3d-dev rollout restart deploy/<name>` | `r` | `r` |
 | Only what's broken | | `ctrl-z` | `ctrl-z` |
 | Tree from a kind down to containers | | `:xray deploy <ns>` | `:deploy -n <ns>`, then `:xray` |
 | Helm releases | `helm --kube-context k3d-dev list -A` | `:helm`, `r` for history | `:helm`, `⏎` for history |
-| Flux reconcile | `flux reconcile hr <name>` | `Shift-r` (plugin) | `t` |
-| Flux suspend / resume | `flux suspend hr <name>` | `Shift-t` (plugin) | `t` |
-| Where an object came from | `flux trace` | `Shift-q` (plugin) | `:gitops` |
+| Flux reconcile | `flux --context k3d-dev reconcile hr <name>` | `Shift-r` (plugin) | `t` |
+| Flux suspend / resume | `flux --context k3d-dev suspend hr <name>` | `Shift-t` (plugin) | `t` |
+| Where an object came from | `flux --context k3d-dev trace` | `Shift-q` (plugin) | `:gitops` |
 
-Every `kubectl` above takes `--context k3d-dev`. Both TUIs list every key for
-the view you're in with `?`.
+Both TUIs list every key for the view you're in with `?`.
 
 ## Troubleshooting with sofka
 
@@ -197,12 +196,12 @@ kubectl --context k3d-dev apply -f scratch/00/broken.yaml   # second terminal
 
 | Try | kubectl | k9s | sofka |
 | --- | --- | --- | --- |
-| Find what's broken | `get pods -n broken` | `:pods -n broken`, `ctrl-z` | `ctrl-z` |
-| `bad-tag`: why | `describe pod -l app=bad-tag`, read Events | `d` on the pod | `X` on the Deployment |
-| `crashloop`: what it said | `logs -p -l app=crashloop` | `p` on the pod | `X`, then `l` on the finding |
-| `too-big`: why | `events -n broken --for pod/<name>` | `:events -n broken` | `X`: unschedulable, and the scheduler's message |
-| What happened, in order | `get events -n broken --sort-by=.lastTimestamp` | `:events -n broken` | `T` on `crashloop`: each restart |
-| Fix `bad-tag` to `6.7.1` and re-apply | `rollout history deploy/bad-tag -n broken` | `z` on the Deployment: its ReplicaSets | `:rollout-history`, `⏎` on revision 1: the image line |
+| Find what's broken | `kubectl --context k3d-dev get pods -n broken` | `:pods -n broken`, `ctrl-z` | `ctrl-z` |
+| `bad-tag`: why | `kubectl --context k3d-dev -n broken describe pod -l app=bad-tag`, read Events | `d` on the pod | `X` on the Deployment |
+| `crashloop`: what it said | `kubectl --context k3d-dev -n broken logs -p -l app=crashloop` | `p` on the pod | `X`, then `l` on the finding |
+| `too-big`: why | `kubectl --context k3d-dev events -n broken --for pod/<name>` | `:events -n broken` | `X`: unschedulable, and the scheduler's message |
+| What happened, in order | `kubectl --context k3d-dev get events -n broken --sort-by=.lastTimestamp` | `:events -n broken` | `T` on `crashloop`: each restart |
+| Fix `bad-tag` to `6.7.1` and re-apply | `kubectl --context k3d-dev rollout history deploy/bad-tag -n broken` | `z` on the Deployment: its ReplicaSets | `:rollout-history`, `⏎` on revision 1: the image line |
 
 Clean up:
 
