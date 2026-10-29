@@ -130,7 +130,7 @@ keys are the same in both unless that line splits them. [Lesson 0](00-tools.md) 
 | Decode a Secret | `x` | `x` |
 | Port-forward, for UIs such as Grafana | `f` or `Shift-f` | `Shift-f` |
 | Only what's broken | `ctrl-z` | `ctrl-z` |
-| Dependency tree | `:deploy -n <ns>`, then `:xray` | `:xray deploy <ns>` |
+| Dependency tree | `:deploy -n podinfo`, then `:xray` | `:xray deploy podinfo` |
 | Flux reconcile, suspend, resume | `t` | dotfiles plugins: `Shift-r`, `Shift-t` |
 | Flux ownership chain | `:gitops` | `Shift-q` (plugin, runs `flux trace`) |
 

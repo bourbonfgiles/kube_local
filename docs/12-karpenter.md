@@ -63,11 +63,18 @@ git clone https://github.com/kubernetes-sigs/karpenter ~/repos/karpenter
 
 ```sh
 # in the karpenter clone
-git tag --sort=-v:refname | head
-git checkout <tag>
+git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head
+KARPENTER_VERSION=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+echo "$KARPENTER_VERSION"
 ```
 
-Check the compatibility matrix in its docs for 1.36 before picking.
+Check the compatibility matrix in its docs supports 1.36 at that version. If
+it doesn't, set `KARPENTER_VERSION` to one from the list that does. Then:
+
+```sh
+# in the karpenter clone
+git checkout "$KARPENTER_VERSION"
+```
 
 ### 2. The KWOK controller
 
@@ -80,10 +87,14 @@ make install-kwok
 
 ```sh
 # in the karpenter clone
-KO_DOCKER_REPO=localhost:5050/karpenter ko build -B --insecure-registry sigs.k8s.io/karpenter/kwok
+KO_DOCKER_REPO=localhost:5050/karpenter ko build -B --tags "$KARPENTER_VERSION" \
+  --insecure-registry sigs.k8s.io/karpenter/kwok
+DIGEST=$(skopeo inspect --tls-verify=false \
+  docker://localhost:5050/karpenter/kwok:"$KARPENTER_VERSION" | jq -r .Digest)
+echo "$DIGEST"
 ```
 
-`ko` prints the image reference with its digest. Note both.
+The image is tagged with the Karpenter version, and `DIGEST` pins it.
 
 ### 4. Install the chart
 
@@ -102,8 +113,6 @@ settings:
 controller:
   image:
     repository: k3d-registry.localhost:5000/karpenter/kwok   # the name pods pull by
-    tag: <tag from step 3>
-    digest: <sha256 from step 3>
   resources:
     requests: {cpu: 500m, memory: 512Mi}
     limits: {memory: 1Gi}
@@ -113,7 +122,9 @@ controller:
 # in the karpenter clone
 kubectl --context k3d-dev apply -f kwok/charts/crds
 helm --kube-context k3d-dev upgrade --install karpenter kwok/charts -n kube-system \
-  --skip-crds -f karpenter-values.yaml
+  --skip-crds -f karpenter-values.yaml \
+  --set controller.image.tag="$KARPENTER_VERSION" \
+  --set controller.image.digest="$DIGEST"
 ```
 
 ### 5. A node class and a pool
@@ -489,11 +500,20 @@ instead.
 
 1. The chart comes from Git, not a chart repository, at the tag from step 1.
    Flux installs the chart's `crds/` itself. The values ConfigMap holds
-   `karpenter-values.yaml` unchanged.
+   `karpenter-values.yaml` plus the image's tag and digest.
    <details>
    <summary>Karpenter as Flux files</summary>
 
-   ```yaml
+   The tag and digest come from your build, so set them again (a new shell
+   loses them) and write the source and values from them, in this repo's root:
+
+   ```sh
+   KARPENTER_VERSION=$(git -C ~/repos/karpenter describe --tags --exact-match)
+   DIGEST=$(skopeo inspect --tls-verify=false \
+     docker://localhost:5050/karpenter/kwok:"$KARPENTER_VERSION" | jq -r .Digest)
+   mkdir -p infrastructure/local/karpenter
+
+   cat > infrastructure/local/karpenter/source.yaml <<EOF
    # infrastructure/local/karpenter/source.yaml
    apiVersion: source.toolkit.fluxcd.io/v1
    kind: GitRepository
@@ -504,26 +524,10 @@ instead.
      interval: 1h
      url: https://github.com/kubernetes-sigs/karpenter
      ref:
-       tag: <tag from step 1>
-   ---
-   # infrastructure/local/karpenter/release.yaml
-   apiVersion: helm.toolkit.fluxcd.io/v2
-   kind: HelmRelease
-   metadata:
-     name: karpenter
-     namespace: kube-system
-   spec:
-     interval: 10m
-     chart:
-       spec:
-         chart: ./kwok/charts
-         sourceRef:
-           kind: GitRepository
-           name: karpenter
-     valuesFrom:
-       - kind: ConfigMap
-         name: karpenter-values-local
-   ---
+       tag: ${KARPENTER_VERSION}
+   EOF
+
+   cat > infrastructure/local/karpenter/values.yaml <<EOF
    # infrastructure/local/karpenter/values.yaml
    apiVersion: v1
    kind: ConfigMap
@@ -544,11 +548,36 @@ instead.
        controller:
          image:
            repository: k3d-registry.localhost:5000/karpenter/kwok   # the name pods pull by
-           tag: <tag from step 3>
-           digest: <sha256 from step 3>
+           tag: ${KARPENTER_VERSION}
+           digest: ${DIGEST}
          resources:
            requests: {cpu: 500m, memory: 512Mi}
            limits: {memory: 1Gi}
+   EOF
+
+   cat infrastructure/local/karpenter/source.yaml infrastructure/local/karpenter/values.yaml
+   ```
+
+   The release has nothing build-specific:
+
+   ```yaml
+   # infrastructure/local/karpenter/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: karpenter
+     namespace: kube-system
+   spec:
+     interval: 10m
+     chart:
+       spec:
+         chart: ./kwok/charts
+         sourceRef:
+           kind: GitRepository
+           name: karpenter
+     valuesFrom:
+       - kind: ConfigMap
+         name: karpenter-values-local
    ```
 
    </details>
