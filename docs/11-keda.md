@@ -160,8 +160,72 @@ Deleting the ScaledObject leaves `accounting` at whatever replica count it had.
 | HelmRelease | `keda` | `infrastructure/base/keda/release.yaml` |
 | ScaledObject | `otel-demo/accounting` | `apps/base/otel-demo/scaledobject.yaml` |
 
-No values ConfigMaps: defaults. The ScaledObject is `scratch/11/scaledobject.yaml`
-unchanged. Push KEDA first and wait for `Ready`: `apps-base` can't apply the
+No values ConfigMaps: defaults.
+
+<details>
+<summary>KEDA as Flux files</summary>
+
+```yaml
+# infrastructure/base/keda/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
+---
+# infrastructure/base/keda/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: kedacore
+  namespace: keda
+spec:
+  interval: 1h
+  url: https://kedacore.github.io/charts
+---
+# infrastructure/base/keda/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: keda
+  namespace: keda
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: keda
+      version: 2.21.0
+      sourceRef:
+        kind: HelmRepository
+        name: kedacore
+```
+
+</details>
+
+The ScaledObject, unchanged from `scratch/11/`:
+
+```yaml
+# apps/base/otel-demo/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: accounting
+  namespace: otel-demo
+spec:
+  scaleTargetRef:
+    name: accounting
+  minReplicaCount: 1
+  maxReplicaCount: 3
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.otel-demo.svc:9092
+        consumerGroup: accounting
+        topic: orders
+        lagThreshold: "10"
+```
+
+Push KEDA first and wait for `Ready`: `apps-base` can't apply the
 ScaledObject until KEDA's CRDs exist, and nothing else in `apps-base` applies
 meanwhile.
 

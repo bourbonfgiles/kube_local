@@ -138,12 +138,90 @@ kubectl --context k3d-dev delete namespace otel-demo
 | ConfigMap | `otel-demo-values-local` | `apps/local/otel-demo/values.yaml` |
 | HTTPRoute | `otel` | `apps/local/otel-demo/route.yaml` |
 
-1. HelmRepository `url:
-   https://open-telemetry.github.io/opentelemetry-helm-charts`; HelmRelease
-   `chart: opentelemetry-demo`, `version: 0.42.4`.
-2. Values: settings you'd keep anywhere (components off, resources) in base;
-   hostnames and root URLs in local. Both can start as `values.yaml: "{}"`.
-3. The route is `scratch/10/route.yaml`, unchanged.
+Values you'd keep anywhere (components off, resources) go in base; hostnames
+and root URLs in local. Both start empty.
+
+<details>
+<summary>The demo as Flux files</summary>
+
+```yaml
+# apps/base/otel-demo/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: otel-demo
+---
+# apps/base/otel-demo/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: open-telemetry
+  namespace: otel-demo
+spec:
+  interval: 1h
+  url: https://open-telemetry.github.io/opentelemetry-helm-charts
+---
+# apps/base/otel-demo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: otel-demo
+  namespace: otel-demo
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: opentelemetry-demo
+      version: 0.42.4
+      sourceRef:
+        kind: HelmRepository
+        name: open-telemetry
+  valuesFrom:
+    - kind: ConfigMap
+      name: otel-demo-values-base
+    - kind: ConfigMap
+      name: otel-demo-values-local
+---
+# apps/base/otel-demo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-demo-values-base
+  namespace: otel-demo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: "{}"
+---
+# apps/local/otel-demo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-demo-values-local
+  namespace: otel-demo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: "{}"
+---
+# apps/local/otel-demo/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: otel
+  namespace: otel-demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [otel.kube.internal]
+  rules:
+    - backendRefs:
+        - name: frontend-proxy
+          port: 8080
+```
+
+</details>
 
 ## Exercises
 

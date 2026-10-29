@@ -141,10 +141,23 @@ location is local; on EKS the same keys would name your ECR repo.
 | ConfigMap, changed | `podinfo/podinfo-values-local` | `apps/local/podinfo/values.yaml` |
 
 ```yaml
-# under data.values.yaml in podinfo-values-local
-image:
-  repository: k3d-registry.localhost:5000/podinfo
-  tag: 6.7.0
+# apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    # ── new ──
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      tag: 6.7.0
+    # ── end new ──
 ```
 
 Push. `kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'`

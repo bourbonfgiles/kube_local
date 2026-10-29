@@ -145,9 +145,90 @@ kubectl --context k3d-dev delete namespace minecraft   # deletes the world
 | ConfigMap | `minecraft-values-base` | `apps/base/minecraft/values.yaml` |
 | ConfigMap | `minecraft-values-local` | `apps/local/minecraft/values.yaml` |
 
-HelmRepository `url: https://itzg.github.io/minecraft-server-charts/`;
-HelmRelease `chart: minecraft`, `version: 5.2.0`. The ConfigMaps hold the two
-scratch files: the NodePort is local because the port mapping is k3d's.
+The ConfigMaps hold the two scratch files unchanged: the NodePort is local
+because the port mapping is k3d's.
+
+<details>
+<summary>Minecraft as Flux files</summary>
+
+```yaml
+# apps/base/minecraft/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minecraft
+---
+# apps/base/minecraft/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: itzg
+  namespace: minecraft
+spec:
+  interval: 1h
+  url: https://itzg.github.io/minecraft-server-charts/
+---
+# apps/base/minecraft/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: minecraft
+  namespace: minecraft
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: minecraft
+      version: 5.2.0
+      sourceRef:
+        kind: HelmRepository
+        name: itzg
+  valuesFrom:
+    - kind: ConfigMap
+      name: minecraft-values-base
+    - kind: ConfigMap
+      name: minecraft-values-local
+---
+# apps/base/minecraft/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minecraft-values-base
+  namespace: minecraft
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    minecraftServer:
+      eula: "TRUE"          # you accept the Minecraft EULA
+      type: VANILLA
+      version: "26.3"
+      memory: 2048M
+      jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+    resources:
+      requests: {cpu: 500m, memory: 2560Mi}
+      limits: {memory: 3Gi}
+    persistence:
+      dataDir:
+        enabled: true
+        Size: 5Gi           # capital S in this chart
+---
+# apps/local/minecraft/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minecraft-values-local
+  namespace: minecraft
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    minecraftServer:
+      serviceType: NodePort
+      nodePort: 30000
+```
+
+</details>
 
 ## Profiling
 

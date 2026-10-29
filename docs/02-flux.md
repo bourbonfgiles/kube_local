@@ -381,8 +381,42 @@ spec:
    ```
 4. `kubectl --context k3d-dev get kustomizations,gateways -A`: the Gateway is
    back, from Git. sofka / k9s: `:kustomizations -A`, then `:gateways -A`.
-5. The podinfo files above, plus `clusters/dev/apps.yaml` with `apps-base` and
-   `apps-local`. Push, then
+5. The podinfo files above, plus the apps layers:
+   ```yaml
+   # clusters/dev/apps.yaml
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: apps-base
+     namespace: flux-system
+   spec:
+     interval: 10m
+     retryInterval: 1m
+     dependsOn:
+       - name: infra-base
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./apps/base
+     prune: true
+   ---
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: apps-local
+     namespace: flux-system
+   spec:
+     interval: 10m
+     retryInterval: 1m
+     dependsOn:
+       - name: apps-base
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./apps/local
+     prune: true
+   ```
+   Push, then
    `curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message`.
 
 ## Exercises
@@ -417,6 +451,144 @@ release name and namespace takes that release over, so Flux owns the CNI.
 | `infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` both ConfigMaps, base first |
 | `infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `cilium/values.yaml` |
 | `infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `overlays/local/cilium-values.yaml` |
+
+<details>
+<summary>Cilium as Flux files</summary>
+
+```yaml
+# clusters/dev/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/base
+  prune: true
+# ── new ──
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-local
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  dependsOn:
+    - name: infra-base
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/local
+  prune: true
+# ── end new ──
+```
+
+```yaml
+# infrastructure/base/cilium/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  interval: 1h
+  url: https://helm.cilium.io
+---
+# infrastructure/base/cilium/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: cilium
+      version: 1.20.3
+      sourceRef:
+        kind: HelmRepository
+        name: cilium
+  valuesFrom:
+    - kind: ConfigMap
+      name: cilium-values-base
+    - kind: ConfigMap
+      name: cilium-values-local
+---
+# infrastructure/base/cilium/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-values-base
+  namespace: kube-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    kubeProxyReplacement: true
+
+    hubble:
+      enabled: true
+      relay:
+        enabled: true
+      ui:
+        enabled: true
+
+    bpf:
+      monitorAggregation: none
+
+    gatewayAPI:
+      enabled: true
+---
+# infrastructure/local/cilium/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-values-local
+  namespace: kube-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    # kube-proxy is disabled, so Cilium needs the API server address directly.
+    k8sServiceHost: k3d-dev-serverlb
+    k8sServicePort: 6443
+
+    # Native routing would need pod CIDR routes on every node; k3d doesn't add them.
+    routingMode: tunnel
+    tunnelProtocol: vxlan
+
+    # Stands in for a cloud load balancer. Inert until lb-ipam.yaml is applied.
+    l2announcements:
+      enabled: true
+
+    # k3d nodes don't propagate mounts, so an auto-mounted cgroup2 never reaches the
+    # agent and socket-LB hooks miss every pod. Use the node's own cgroup root.
+    cgroup:
+      autoMount:
+        enabled: false
+      hostRoot: /sys/fs/cgroup
+
+    operator:
+      replicas: 1
+
+    # Use the pod CIDR k3s assigns each node (10.42.0.0/16). Cilium's own default
+    # pool, 10.0.0.0/8, overlaps the node network.
+    ipam:
+      mode: kubernetes
+```
+
+The ConfigMaps hold `cilium/values.yaml` and
+`overlays/local/cilium-values.yaml` unchanged.
+
+</details>
 
 1. Compare what's installed with what you're about to commit. The two
    ConfigMaps merged must give exactly this:

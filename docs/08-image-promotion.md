@@ -24,9 +24,11 @@ flowchart LR
   hr --> pods["Pods on 6.7.1"]
 ```
 
-The marker is a comment on the line to rewrite, naming a policy:
+The marker is a comment on the line to rewrite, naming a policy. Here it's
+the one line of podinfo's HelmRelease that Flux will own:
 
 ```yaml
+# apps/base/podinfo/release.yaml, one line of it
 tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
 ```
 
@@ -144,15 +146,70 @@ registry and this cluster's branch.
    HelmRelease's `spec.values`, which also overrides every ConfigMap:
    ```yaml
    # apps/base/podinfo/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: podinfo
+     namespace: podinfo
    spec:
+     interval: 10m
+     chartRef:
+       kind: OCIRepository
+       name: podinfo
+     valuesFrom:
+       - kind: ConfigMap
+         name: podinfo-values-base
+       - kind: ConfigMap
+         name: podinfo-values-local
+     # ── new ──
      values:
        image:
          tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
+     # ── end new ──
    ```
-   Delete `image.tag` from `podinfo-values-local`.
-2. **The objects**: `scratch/08/image.yaml` with `name: podinfo` and
-   `namespace: podinfo`, plus the automation:
+   And take `tag` out of `podinfo-values-local`, leaving the repository:
    ```yaml
+   # apps/local/podinfo/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: podinfo-values-local
+     namespace: podinfo
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       ui:
+         message: k3d
+       image:
+         repository: k3d-registry.localhost:5000/podinfo
+   ```
+2. **The objects**: `scratch/08/image.yaml` renamed to `podinfo` in namespace
+   `podinfo`, plus the automation:
+   ```yaml
+   # apps/local/podinfo/image.yaml
+   apiVersion: image.toolkit.fluxcd.io/v1
+   kind: ImageRepository
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     image: k3d-registry.localhost:5000/podinfo
+     interval: 1m
+     insecure: true
+   ---
+   apiVersion: image.toolkit.fluxcd.io/v1
+   kind: ImagePolicy
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     imageRepositoryRef:
+       name: podinfo
+     policy:
+       semver:
+         range: ">=6.0.0 <7.0.0"
+   # ── new ──
    ---
    apiVersion: image.toolkit.fluxcd.io/v1
    kind: ImageUpdateAutomation
@@ -178,6 +235,7 @@ registry and this cluster's branch.
      update:
        path: ./apps
        strategy: Setters
+   # ── end new ──
    ```
 3. Push. From now on, `git pull` before every commit: Flux commits too.
 4. **Release**: mirror `6.7.1` (lesson 7). Watch

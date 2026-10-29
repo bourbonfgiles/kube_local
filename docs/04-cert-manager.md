@@ -198,33 +198,156 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
 | Kustomization | `infra-local-config` | `clusters/dev/infrastructure.yaml` |
 | ClusterIssuer | `local-ca` | `infrastructure/local-config/cert-manager/cluster-issuer.yaml` |
 | Gateway, moved and extended | `gateway/web` | `infrastructure/local/gateway/gateway.yaml` |
-| HTTPRoute | `gateway/https-redirect` | `infrastructure/local/gateway/redirect.yaml` |
 
-1. **The chart.** OCIRepository `url: oci://quay.io/jetstack/charts/cert-manager`,
-   `ref.tag: v1.21.2`, plus the layerSelector from podinfo's. HelmRelease
-   with `chartRef` and `valuesFrom` only `cert-manager-values-base`: nothing
-   about the chart is k3d-specific. The ConfigMap holds
-   `scratch/04/values-base.yaml`. Push, and wait for
+1. **The chart.** Nothing about it is k3d-specific, so it's all in `base/`
+   and the HelmRelease reads only the base ConfigMap. The ConfigMap holds
+   `scratch/04/values-base.yaml` unchanged.
+   <details>
+   <summary>cert-manager as Flux files</summary>
+
+   ```yaml
+   # infrastructure/base/cert-manager/namespace.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: cert-manager
+   ---
+   # infrastructure/base/cert-manager/source.yaml
+   apiVersion: source.toolkit.fluxcd.io/v1
+   kind: OCIRepository
+   metadata:
+     name: cert-manager
+     namespace: cert-manager
+   spec:
+     interval: 1h
+     url: oci://quay.io/jetstack/charts/cert-manager
+     ref:
+       tag: v1.21.2
+     layerSelector:
+       mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+       operation: copy
+   ---
+   # infrastructure/base/cert-manager/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: cert-manager
+     namespace: cert-manager
+   spec:
+     interval: 10m
+     chartRef:
+       kind: OCIRepository
+       name: cert-manager
+     valuesFrom:
+       - kind: ConfigMap
+         name: cert-manager-values-base
+   ---
+   # infrastructure/base/cert-manager/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: cert-manager-values-base
+     namespace: cert-manager
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       crds:
+         enabled: true
+       config:
+         apiVersion: controller.config.cert-manager.io/v1alpha1
+         kind: ControllerConfiguration
+         enableGatewayAPI: true
+   ```
+
+   </details>
+
+   Push, and wait for
    `kubectl --context k3d-dev get helmreleases -n cert-manager` to be `Ready`.
 2. **A layer for objects that need a chart's CRDs.** The `ClusterIssuer` kind
    only exists once the chart is installed. In `infra-local` it would fail,
-   and block the ConfigMaps other charts are waiting for. So add a
-   Kustomization `infra-local-config` to `clusters/dev/infrastructure.yaml`:
-   `path: ./infrastructure/local-config`, `dependsOn: [{name: infra-local}]`.
-   Copy `scratch/04/cluster-issuer.yaml` to
-   `infrastructure/local-config/cert-manager/cluster-issuer.yaml`.
+   and block the ConfigMaps other charts are waiting for. So add a third
+   layer:
+   ```yaml
+   # clusters/dev/infrastructure.yaml
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: infra-base
+     namespace: flux-system
+   spec:
+     interval: 10m
+     retryInterval: 1m
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./infrastructure/base
+     prune: true
+   ---
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: infra-local
+     namespace: flux-system
+   spec:
+     interval: 10m
+     retryInterval: 1m
+     dependsOn:
+       - name: infra-base
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./infrastructure/local
+     prune: true
+   # ── new ──
+   ---
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: infra-local-config
+     namespace: flux-system
+   spec:
+     interval: 10m
+     retryInterval: 1m
+     dependsOn:
+       - name: infra-local
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./infrastructure/local-config
+     prune: true
+   # ── end new ──
+   ```
+   And the issuer, unchanged from `scratch/04/`:
+   ```yaml
+   # infrastructure/local-config/cert-manager/cluster-issuer.yaml
+   apiVersion: cert-manager.io/v1
+   kind: ClusterIssuer
+   metadata:
+     name: local-ca
+   spec:
+     ca:
+       secretName: local-ca
+   ```
 3. **The Gateway becomes local.** It's about to name a local hostname and
    issuer: `git mv infrastructure/base/gateway infrastructure/local/gateway`.
    On EKS its file would name your real domain and an ACME issuer. Then:
    ```yaml
-   # infrastructure/local/gateway/gateway.yaml (the Gateway part)
+   # infrastructure/local/gateway/gateway.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: gateway
+   ---
    apiVersion: gateway.networking.k8s.io/v1
    kind: Gateway
    metadata:
      name: web
      namespace: gateway
+     # ── new ──
      annotations:
        cert-manager.io/cluster-issuer: local-ca
+     # ── end new ──
    spec:
      gatewayClassName: cilium
      listeners:
@@ -234,6 +357,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
          allowedRoutes:
            namespaces:
              from: All
+       # ── new ──
        - name: https
          protocol: HTTPS
          port: 443
@@ -245,6 +369,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
            mode: Terminate
            certificateRefs:
              - name: wildcard-kube-internal
+       # ── end new ──
    ```
    The Secret `wildcard-kube-internal` doesn't exist yet; cert-manager creates
    it from the listener.
@@ -261,6 +386,51 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    and `sectionName: http`, hostname `*.kube.internal`, and one rule with a
    `RequestRedirect` filter (`scheme: https`, `statusCode: 301`). Then give
    each app route `sectionName: https`, or it still matches plain HTTP too.
+   <details>
+   <summary>Answer</summary>
+
+   ```yaml
+   # infrastructure/local/gateway/redirect.yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: HTTPRoute
+   metadata:
+     name: https-redirect
+     namespace: gateway
+   spec:
+     parentRefs:
+       - name: web
+         sectionName: http
+     hostnames: ["*.kube.internal"]
+     rules:
+       - filters:
+           - type: RequestRedirect
+             requestRedirect:
+               scheme: https
+               statusCode: 301
+   ```
+
+   ```yaml
+   # apps/local/podinfo/route.yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: HTTPRoute
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     parentRefs:
+       - name: web
+         namespace: gateway
+         # ── new ──
+         sectionName: https
+         # ── end new ──
+     hostnames: [podinfo.kube.internal]
+     rules:
+       - backendRefs:
+           - name: podinfo
+             port: 9898
+   ```
+
+   </details>
 3. Rebuild the cluster and bring HTTPS back without trusting anything again.
 4. Harder: give a route the hostname `a.b.kube.internal`. Work out why Zen
    rejects the certificate, then fix it with a second HTTPS listener for

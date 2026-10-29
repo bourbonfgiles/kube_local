@@ -186,13 +186,70 @@ kubectl --context k3d-dev apply -f scratch/01/route.yaml
 curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/ | jq .message
 ```
 
-Then replace `rules:` with each of these in turn, re-apply, and predict the
-answer before you `curl`:
+Then change `scratch/01/route.yaml` in three steps, each building on the last.
+Re-apply after each, and predict the answer before you `curl`. New lines sit
+between `# ── new ──` and `# ── end new ──`.
 
 <details>
-<summary>Path: <code>/green</code> to green, rewritten to <code>/</code></summary>
+<summary>1. Path: <code>/green</code> to green, rewritten to <code>/</code></summary>
 
 ```yaml
+# scratch/01/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [demo.kube.internal]
+  rules:
+    # ── new ──
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /green
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
+    # ── end new ──
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/01/route.yaml
+curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/green | jq .message
+```
+
+Without the filter, podinfo gets `/green`, which it doesn't serve.
+
+</details>
+
+<details>
+<summary>2. Header: <code>x-colour: green</code> to green</summary>
+
+```yaml
+# scratch/01/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [demo.kube.internal]
   rules:
     - matches:
         - path:
@@ -207,22 +264,7 @@ answer before you `curl`:
       backendRefs:
         - name: green-podinfo
           port: 9898
-    - backendRefs:
-        - name: blue-podinfo
-          port: 9898
-```
-
-`curl -H 'Host: demo.kube.internal' http://10.89.0.200/green`. Without the
-filter, podinfo gets `/green`, which it doesn't serve.
-
-</details>
-
-<details>
-<summary>Header: <code>x-colour: green</code> to green</summary>
-
-Add this rule above the catch-all:
-
-```yaml
+    # ── new ──
     - matches:
         - headers:
             - name: x-colour
@@ -230,28 +272,68 @@ Add this rule above the catch-all:
       backendRefs:
         - name: green-podinfo
           port: 9898
+    # ── end new ──
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
 ```
 
-`curl -H 'Host: demo.kube.internal' -H 'x-colour: green' http://10.89.0.200/`
+```sh
+kubectl --context k3d-dev apply -f scratch/01/route.yaml
+curl -s -H 'Host: demo.kube.internal' -H 'x-colour: green' http://10.89.0.200/ | jq .message
+```
 
 </details>
 
 <details>
-<summary>Weights: 90/10 split</summary>
-
-Make the catch-all:
+<summary>3. Weights: 90/10 split on the catch-all</summary>
 
 ```yaml
+# scratch/01/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [demo.kube.internal]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /green
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
+    - matches:
+        - headers:
+            - name: x-colour
+              value: green
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
     - backendRefs:
         - name: blue-podinfo
           port: 9898
+          # ── new ──
           weight: 90
         - name: green-podinfo
           port: 9898
           weight: 10
+          # ── end new ──
 ```
 
 ```sh
+kubectl --context k3d-dev apply -f scratch/01/route.yaml
 for i in $(seq 50); do
   curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/ | jq -r .message
 done | sort | uniq -c

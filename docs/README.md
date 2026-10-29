@@ -94,6 +94,11 @@ with `helm upgrade --install ... -f values.yaml`; everything else with
 changes. Each lesson ends this part by removing what it installed, so the
 Flux part starts clean.
 
+**Files.** Every YAML block starts with a comment naming its file. A change to
+a file you already have shows the whole file again, with the new lines
+between `# ── new ──` and `# ── end new ──`. Both are plain comments, so the
+block still pastes as valid YAML.
+
 **With Flux.** The same objects as files in the repo, in the layout lesson 2
 sets up:
 
