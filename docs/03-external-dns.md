@@ -42,7 +42,8 @@ TSIG key. The sources, policy and registry values don't change.
 - The Gateway and podinfo's route `podinfo.kube.internal` from lesson 2.
 - Flux, for the Flux part.
 
-**On your machine**: `kubectl`, `helm`, `flux`, `dig`, `curl`, `k9s`, `sofka`. The
+**On your machine**: `kubectl`, `helm`, `flux`, `dig`, `curl`, and `sofka` or
+`k9s` ([lesson 0](00-tools.md)). The
 host resolves `kube.internal` through the dotfiles `dotfiles-kube-dns`
 unit; `resolvectl status k3d0` should list `10.89.0.250`.
 
@@ -57,7 +58,13 @@ kubectl --context k3d-dev create namespace external-dns
 kubectl --context k3d-dev -n external-dns create secret generic externaldns-tsig \
   --from-literal=secret="$(kubectl --context k3d-dev -n dns get secret externaldns-tsig \
     -o jsonpath='{.data.secret}' | base64 -d)"
+kubectl --context k3d-dev -n external-dns get secret externaldns-tsig \
+  -o jsonpath='{.data.secret}' | base64 -d
 ```
+
+The second command should print the same key BIND has.
+
+sofka / k9s: `:secrets -n external-dns`, `x` to decode
 
 ### 2. Values
 
@@ -102,7 +109,17 @@ helm --kube-context k3d-dev upgrade --install external-dns external-dns \
   -n external-dns -f scratch/03/values-base.yaml -f scratch/03/values-local.yaml
 ```
 
-k9s `:pods -n external-dns`, `l`: look for `Adding RR` lines. Then:
+```sh
+kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f
+```
+
+Look for `Adding RR` lines. For only the failures, pipe through
+`grep -iE 'error|warn'`.
+
+sofka / k9s: `:pods -n external-dns`, `l`. Only the failures: sofka `ctrl-z`
+in the logs view; k9s `/error`.
+
+Then:
 
 ```sh
 dig +short @10.89.0.250 podinfo.kube.internal
@@ -117,16 +134,6 @@ curl -s http://podinfo.kube.internal/ | jq .message
 | Add a second hostname to the route (Flux will revert it later; fine for now) | A new record within a minute |
 | Set `policy: upsert-only`, upgrade, remove the hostname | The record stays |
 | Remove `--rfc2136-axfr`, upgrade | Logs: it can't list the zone, so it can't reconcile deletes |
-
-**Where to look**
-
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| TSIG Secret copied | `kubectl --context k3d-dev -n external-dns get secret externaldns-tsig -o jsonpath='{.data.secret}' \| base64 -d` | `:secrets -n external-dns`, `x` | `:secrets -n external-dns`, `x` |
-| Records being written | `kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f` | `:pods -n external-dns`, `l` | `:deploy -n external-dns`, `l` |
-| Only the failures | `kubectl --context k3d-dev -n external-dns logs deploy/external-dns \| grep -iE 'error\|warn'` | `l`, then `/error` | `l`, then `ctrl-z` |
-| Release ready (Flux part) | `kubectl --context k3d-dev get helmreleases -n external-dns` | `:helmreleases -n external-dns` | `:helmreleases -n external-dns` |
-| Restart BIND (exercise 3) | `kubectl --context k3d-dev -n dns rollout restart deploy/bind` | `:deploy -n dns`, `r` | `:deploy -n dns`, `r` |
 
 ### 5. Clean up
 
@@ -207,7 +214,9 @@ data:
 `external-dns-values-local`. This is the first file under
 `infrastructure/local/`, so add the `infra-local` Kustomization to
 `clusters/dev/infrastructure.yaml` (lesson 2) in the same commit. Push, then
-k9s `:helmreleases -n external-dns` until `Ready`.
+`kubectl --context k3d-dev get helmreleases -n external-dns -w` until `Ready`.
+
+sofka / k9s: `:helmreleases -n external-dns`
 
 ## Exercises
 
@@ -215,7 +224,9 @@ k9s `:helmreleases -n external-dns` until `Ready`.
 2. A Service of `type: LoadBalancer` with the annotation
    `external-dns.alpha.kubernetes.io/hostname: lb.kube.internal`. Cilium gives
    it an address from the pool; ExternalDNS names it.
-3. Restart BIND (k9s `:deploy -n dns`, restart). The zone lives in an
+3. Restart BIND
+   (`kubectl --context k3d-dev -n dns rollout restart deploy/bind`, or `r` on
+   it in `:deploy -n dns`). The zone lives in an
    `emptyDir`, so records vanish. Time how long until ExternalDNS puts them
    back.
 4. Harder: install a second ExternalDNS by hand with `txtOwnerId: other`. Work
@@ -234,8 +245,8 @@ k9s `:helmreleases -n external-dns` until `Ready`.
   `systemctl status dotfiles-kube-dns`.
 - Errors from BIND show only in ExternalDNS's logs, often as a terse
   `NOTAUTH` or `REFUSED`. Those usually mean a wrong key name, algorithm or
-  zone. sofka's `ctrl-z` in the logs view hides everything but warnings and
-  errors.
+  zone. A sofka extra ([lesson 0](00-tools.md)): `ctrl-z` in the logs view
+  hides everything but warnings and errors.
 
 ## Links
 

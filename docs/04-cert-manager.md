@@ -52,7 +52,7 @@ cert-manager and terminate TLS on the load balancer with ACM.
 **In the cluster**: Flux and ExternalDNS (lesson 3), so names resolve.
 
 **On your machine**: `mkcert`, `/usr/bin/trust`, `openssl`, `kubectl`,
-`helm`, `flux`, `k9s`, `sofka`, `curl`, Zen.
+`helm`, `flux`, `curl`, Zen, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
 
 ## Trust the CA on Bazzite 44
 
@@ -97,7 +97,13 @@ helm --kube-context k3d-dev upgrade --install cert-manager oci://quay.io/jetstac
   --version v1.21.2 -n cert-manager --create-namespace -f scratch/04/values-base.yaml
 ```
 
-k9s `:pods -n cert-manager`: the controller, the webhook and cainjector.
+```sh
+kubectl --context k3d-dev get pods -n cert-manager
+```
+
+The controller, the webhook and cainjector.
+
+sofka / k9s: `:pods -n cert-manager`
 
 ### 2. The CA as an issuer
 
@@ -121,8 +127,14 @@ spec:
 kubectl --context k3d-dev apply -f scratch/04/cluster-issuer.yaml
 ```
 
-k9s `:clusterissuers`: `READY True`. A `ClusterIssuer` reads its Secret from
-cert-manager's own namespace.
+```sh
+kubectl --context k3d-dev get clusterissuers
+```
+
+`READY True`. A `ClusterIssuer` reads its Secret from cert-manager's own
+namespace.
+
+sofka / k9s: `:clusterissuers`
 
 ### 3. A certificate, by hand
 
@@ -149,25 +161,20 @@ kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls
   | base64 -d | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
 ```
 
+sofka / k9s: `:secrets -n default`, `x` on `test-tls`
+
 ### 4. Iterate
 
 | Try | Then look at |
 | --- | --- |
 | Add `a.kube.internal` to `dnsNames` | The Secret is reissued; `openssl` shows both names |
-| Point `issuerRef.name` at `nope` | `d` on the Certificate: it waits, and says why |
-| `duration: 1h`, `renewBefore: 59m` | `:certificaterequests -n default` fills up as it renews every minute |
+| Point `issuerRef.name` at `nope` | `kubectl --context k3d-dev -n default describe certificate test`: it waits, and says why |
+| `duration: 1h`, `renewBefore: 59m` | `kubectl --context k3d-dev get certificaterequests -n default` fills up as it renews every minute |
 | Delete the Secret `test-tls` | cert-manager notices and issues again |
 
-**Where to look**
-
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Pods up | `kubectl --context k3d-dev get pods -n cert-manager` | `:pods -n cert-manager` | `:pods -n cert-manager` |
-| Issuer ready | `kubectl --context k3d-dev get clusterissuers` | `:clusterissuers` | `:clusterissuers` |
-| Why a Certificate waits | `kubectl --context k3d-dev -n default describe certificate test` | `d` | `X`: its `Ready` reason |
-| Signing attempts | `kubectl --context k3d-dev get certificaterequests -n default` | `:certificaterequests -n default` | `u` on the Certificate, then `c` for what it owns |
-| The issued certificate | The `openssl` pipe above | `:secrets -n default`, `x` on `test-tls` | `:secrets -n default`, `x` on `test-tls` |
-| The Gateway's certificate (Flux part) | `kubectl --context k3d-dev get certificates -n gateway` | `:certificates -n gateway` | `:certificates -n gateway` |
+sofka / k9s: `d` on the Certificate, `:certificaterequests -n default`.
+sofka extras ([lesson 0](00-tools.md)): `X` gives the Certificate's `Ready`
+reason, and `u` then `c` walks to the requests it owns.
 
 ### 5. Clean up
 
@@ -197,8 +204,8 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    `ref.tag: v1.21.2`, plus the layerSelector from podinfo's. HelmRelease
    with `chartRef` and `valuesFrom` only `cert-manager-values-base`: nothing
    about the chart is k3d-specific. The ConfigMap holds
-   `scratch/04/values-base.yaml`. Push, and wait for `:helmreleases -n
-   cert-manager` to be `Ready`.
+   `scratch/04/values-base.yaml`. Push, and wait for
+   `kubectl --context k3d-dev get helmreleases -n cert-manager` to be `Ready`.
 2. **A layer for objects that need a chart's CRDs.** The `ClusterIssuer` kind
    only exists once the chart is installed. In `infra-local` it would fail,
    and block the ConfigMaps other charts are waiting for. So add a
@@ -241,7 +248,8 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    ```
    The Secret `wildcard-kube-internal` doesn't exist yet; cert-manager creates
    it from the listener.
-4. Push. `:certificates -n gateway` until `READY True`, then
+4. Push. `kubectl --context k3d-dev get certificates -n gateway -w` until
+   `READY True` (sofka / k9s: `:certificates -n gateway`), then
    `curl https://podinfo.kube.internal/` and Zen.
 
 ## Exercises
