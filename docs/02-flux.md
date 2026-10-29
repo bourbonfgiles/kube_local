@@ -53,7 +53,7 @@ controllers would use IAM roles for ECR and KMS instead of tokens and keys.
 | Tool | Why |
 | --- | --- |
 | `flux` | Install, bootstrap, and everything k9s can't do |
-| `kubectl`, `helm`, `k9s`, `git` | As usual |
+| `kubectl`, `helm`, `k9s`, `sofka`, `git` | As usual |
 | A GitHub fine-grained token on `kube_local` | Bootstrap creates a deploy key and commits. Permissions: Administration read/write, Contents read/write, Metadata read |
 
 Check the cluster is ready for Flux:
@@ -133,6 +133,25 @@ it says otherwise:
 | Add `driftDetection: {mode: enabled}` under `spec`, then scale again | Flux puts it back to 3 |
 | `flux --context k3d-dev suspend helmrelease podinfo -n flux-system`, change a value, re-apply | Nothing happens until `flux resume` |
 | Set `ref.tag` to `9.9.9` | `d` on the OCIRepository: the error, and the HelmRelease keeps the last good chart |
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| Controllers | `kubectl --context k3d-dev get pods -n flux-system` | `:pods -n flux-system` | `:pods -n flux-system` |
+| Flux's kinds | `kubectl --context k3d-dev get crds`, look for `fluxcd` | `:crds`, `/fluxcd` | `:crds`, `/fluxcd` |
+| Chart fetched | `kubectl --context k3d-dev get ocirepositories -A` | `:ocirepositories -A` | `:ocirepositories -A` |
+| Release installed | `kubectl --context k3d-dev get helmreleases -A` | `:helmreleases -A` | `:helmreleases -A` |
+| Helm's revisions | `helm --kube-context k3d-dev history podinfo -n podinfo` | `:helm`, `r` on `podinfo` | `⏎` on the HelmRelease |
+| Suspend, resume | `flux --context k3d-dev suspend helmrelease podinfo -n flux-system` | `Shift-t` (plugin) | `t` |
+| Reconcile now | `flux --context k3d-dev reconcile helmrelease podinfo -n flux-system` | `Shift-r` (plugin) | `t` |
+| Why a source failed | `kubectl --context k3d-dev -n flux-system describe ocirepository podinfo` | `d` | `X` |
+
+> [!TIP]
+> With `ref.tag: 9.9.9`, sofka's `ctrl-z` on `:ocirepositories -A` leaves only
+> the broken source, and `X` gives its `Ready` reason. `:gitops` on the podinfo
+> Deployment walks up to the HelmRelease and its source, with the applied and
+> latest revisions side by side.
 
 ### 4. Clean up
 
@@ -367,6 +386,8 @@ spec:
    ```sh
    flux --context k3d-dev trace -n podinfo deployment podinfo
    ```
+   The same from a TUI: `Shift-q` on the Deployment in k9s, `:gitops` in
+   sofka.
 5. Preview a change before pushing:
    ```sh
    flux --context k3d-dev diff kustomization apps-base --path ./apps/base

@@ -52,7 +52,7 @@ cert-manager and terminate TLS on the load balancer with ACM.
 **In the cluster**: Flux and ExternalDNS (lesson 3), so names resolve.
 
 **On your machine**: `mkcert`, `/usr/bin/trust`, `openssl`, `kubectl`,
-`helm`, `flux`, `curl`, Zen.
+`helm`, `flux`, `k9s`, `sofka`, `curl`, Zen.
 
 ## Trust the CA on Bazzite 44
 
@@ -157,6 +157,17 @@ kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls
 | Point `issuerRef.name` at `nope` | `d` on the Certificate: it waits, and says why |
 | `duration: 1h`, `renewBefore: 59m` | `:certificaterequests -n default` fills up as it renews every minute |
 | Delete the Secret `test-tls` | cert-manager notices and issues again |
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| Pods up | `kubectl --context k3d-dev get pods -n cert-manager` | `:pods -n cert-manager` | `:pods -n cert-manager` |
+| Issuer ready | `kubectl --context k3d-dev get clusterissuers` | `:clusterissuers` | `:clusterissuers` |
+| Why a Certificate waits | `kubectl --context k3d-dev -n default describe certificate test` | `d` | `X`: its `Ready` reason |
+| Signing attempts | `kubectl --context k3d-dev get certificaterequests -n default` | `:certificaterequests -n default` | `u` on the Certificate, then `c` for what it owns |
+| The issued certificate | The `openssl` pipe above | `:secrets -n default`, `x` on `test-tls` | `:secrets -n default`, `x` on `test-tls` |
+| The Gateway's certificate (Flux part) | `kubectl --context k3d-dev get certificates -n gateway` | `:certificates -n gateway` | `:certificates -n gateway` |
 
 ### 5. Clean up
 

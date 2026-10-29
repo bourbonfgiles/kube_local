@@ -42,7 +42,7 @@ TSIG key. The sources, policy and registry values don't change.
 - The Gateway and podinfo's route `podinfo.kube.internal` from lesson 2.
 - Flux, for the Flux part.
 
-**On your machine**: `kubectl`, `helm`, `flux`, `dig`, `curl`, `k9s`. The
+**On your machine**: `kubectl`, `helm`, `flux`, `dig`, `curl`, `k9s`, `sofka`. The
 host resolves `kube.internal` through the dotfiles `dotfiles-kube-dns`
 unit; `resolvectl status k3d0` should list `10.89.0.250`.
 
@@ -117,6 +117,16 @@ curl -s http://podinfo.kube.internal/ | jq .message
 | Add a second hostname to the route (Flux will revert it later; fine for now) | A new record within a minute |
 | Set `policy: upsert-only`, upgrade, remove the hostname | The record stays |
 | Remove `--rfc2136-axfr`, upgrade | Logs: it can't list the zone, so it can't reconcile deletes |
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| TSIG Secret copied | `kubectl --context k3d-dev -n external-dns get secret externaldns-tsig -o jsonpath='{.data.secret}' \| base64 -d` | `:secrets -n external-dns`, `x` | `:secrets -n external-dns`, `x` |
+| Records being written | `kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f` | `:pods -n external-dns`, `l` | `:deploy -n external-dns`, `l` |
+| Only the failures | `kubectl --context k3d-dev -n external-dns logs deploy/external-dns \| grep -iE 'error\|warn'` | `l`, then `/error` | `l`, then `ctrl-z` |
+| Release ready (Flux part) | `kubectl --context k3d-dev get helmreleases -n external-dns` | `:helmreleases -n external-dns` | `:helmreleases -n external-dns` |
+| Restart BIND (exercise 3) | `kubectl --context k3d-dev -n dns rollout restart deploy/bind` | `:deploy -n dns`, `r` | `:deploy -n dns`, `r` |
 
 ### 5. Clean up
 
@@ -224,7 +234,8 @@ k9s `:helmreleases -n external-dns` until `Ready`.
   `systemctl status dotfiles-kube-dns`.
 - Errors from BIND show only in ExternalDNS's logs, often as a terse
   `NOTAUTH` or `REFUSED`. Those usually mean a wrong key name, algorithm or
-  zone.
+  zone. sofka's `ctrl-z` in the logs view hides everything but warnings and
+  errors.
 
 ## Links
 
