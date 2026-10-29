@@ -165,12 +165,163 @@ sofka / k9s: `:secrets -n default`, `x` on `test-tls`
 
 ### 4. Iterate
 
-| Try | Then look at |
-| --- | --- |
-| Add `a.kube.internal` to `dnsNames` | The Secret is reissued; `openssl` shows both names |
-| Point `issuerRef.name` at `nope` | `kubectl --context k3d-dev -n default describe certificate test`: it waits, and says why |
-| `duration: 1h`, `renewBefore: 59m` | `kubectl --context k3d-dev get certificaterequests -n default` fills up as it renews every minute |
-| Delete the Secret `test-tls` | cert-manager notices and issues again |
+Each step edits `scratch/04/certificate.yaml` and builds on the last. New or
+changed lines sit between `# ── new ──` and `# ── end new ──`.
+
+<details>
+<summary>1. A second name</summary>
+
+```yaml
+# scratch/04/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test
+  namespace: default
+spec:
+  secretName: test-tls
+  # ── new ──
+  dnsNames: [test.kube.internal, a.kube.internal]
+  # ── end new ──
+  duration: 24h
+  renewBefore: 1h
+  issuerRef:
+    kind: ClusterIssuer
+    name: local-ca
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls\.crt}' \
+  | base64 -d | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
+```
+
+The Secret is reissued, and `openssl` shows both names.
+
+</details>
+
+<details>
+<summary>2. An issuer that doesn't exist</summary>
+
+```yaml
+# scratch/04/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test
+  namespace: default
+spec:
+  secretName: test-tls
+  dnsNames: [test.kube.internal, a.kube.internal]
+  duration: 24h
+  renewBefore: 1h
+  issuerRef:
+    kind: ClusterIssuer
+    # ── new ──
+    name: nope
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+kubectl --context k3d-dev -n default describe certificate test
+```
+
+It waits, and says why. Put the issuer back:
+
+```yaml
+# scratch/04/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test
+  namespace: default
+spec:
+  secretName: test-tls
+  dnsNames: [test.kube.internal, a.kube.internal]
+  duration: 24h
+  renewBefore: 1h
+  issuerRef:
+    kind: ClusterIssuer
+    # ── new ──
+    name: local-ca
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+kubectl --context k3d-dev -n default get certificate test
+```
+
+`READY True` again.
+
+</details>
+
+<details>
+<summary>3. Renew every minute</summary>
+
+```yaml
+# scratch/04/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test
+  namespace: default
+spec:
+  secretName: test-tls
+  dnsNames: [test.kube.internal, a.kube.internal]
+  # ── new ──
+  duration: 1h
+  renewBefore: 59m
+  # ── end new ──
+  issuerRef:
+    kind: ClusterIssuer
+    name: local-ca
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+kubectl --context k3d-dev get certificaterequests -n default -w
+```
+
+A new request every minute or so. Back to a day:
+
+```yaml
+# scratch/04/certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test
+  namespace: default
+spec:
+  secretName: test-tls
+  dnsNames: [test.kube.internal, a.kube.internal]
+  # ── new ──
+  duration: 24h
+  renewBefore: 1h
+  # ── end new ──
+  issuerRef:
+    kind: ClusterIssuer
+    name: local-ca
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+```
+
+</details>
+
+<details>
+<summary>4. Delete the Secret</summary>
+
+```sh
+kubectl --context k3d-dev -n default delete secret test-tls
+kubectl --context k3d-dev -n default get secret test-tls -w
+```
+
+cert-manager notices and issues again.
+
+</details>
 
 sofka / k9s: `d` on the Certificate, `:certificaterequests -n default`.
 sofka extras ([lesson 0](00-tools.md)): `X` gives the Certificate's `Ready`
@@ -262,8 +413,14 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
 
    </details>
 
-   Push, and wait for
-   `kubectl --context k3d-dev get helmreleases -n cert-manager` to be `Ready`.
+   Commit, push, and wait for `Ready`:
+   ```sh
+   git add infrastructure/
+   git commit -m "cert-manager with Flux"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev get helmreleases -n cert-manager -w
+   ```
 2. **A layer for objects that need a chart's CRDs.** The `ClusterIssuer` kind
    only exists once the chart is installed. In `infra-local` it would fail,
    and block the ConfigMaps other charts are waiting for. So add a third
@@ -373,9 +530,17 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    ```
    The Secret `wildcard-kube-internal` doesn't exist yet; cert-manager creates
    it from the listener.
-4. Push. `kubectl --context k3d-dev get certificates -n gateway -w` until
-   `READY True` (sofka / k9s: `:certificates -n gateway`), then
-   `curl https://podinfo.kube.internal/` and Zen.
+4. Commit, push, and wait for `READY True`:
+   ```sh
+   git add clusters/ infrastructure/
+   git commit -m "HTTPS on the Gateway"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev get certificates -n gateway -w
+   curl -s https://podinfo.kube.internal/ | jq .message
+   ```
+   Then open <https://podinfo.kube.internal/> in Zen. sofka / k9s:
+   `:certificates -n gateway`.
 
 ## Exercises
 

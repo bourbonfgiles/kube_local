@@ -108,20 +108,207 @@ sofka / k9s: `:imagerepositories -n flux-system`, `d` for the tags;
 
 ### Iterate
 
-| Try | Then look at |
-| --- | --- |
-| `range: "6.7.0"` | Pinned: it picks `6.7.0` even though `6.7.1` exists |
-| Mirror a prerelease (below), keep `>=6.0.0 <7.0.0` | Ignored: semver ranges skip prereleases |
-| `range: ">=6.0.0-0"` | Now the prerelease wins |
-| Replace `semver` with `alphabetical: {order: asc}` | Why semver exists |
+Each step edits the policy in `scratch/08/image.yaml`, re-applies, and asks
+which tag it picked. New or changed lines sit between `# ── new ──` and
+`# ── end new ──`.
 
-A prerelease to play with, re-tagged from an upstream image while mirroring:
+<details>
+<summary>1. Pin one version</summary>
+
+```yaml
+# scratch/08/image.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  image: k3d-registry.localhost:5000/podinfo
+  interval: 1m
+  insecure: true
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: podinfo-test
+  policy:
+    # ── new ──
+    semver:
+      range: "6.7.0"
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/08/image.yaml
+flux --context k3d-dev get images policy podinfo-test -n flux-system
+```
+
+Pinned: it picks `6.7.0` even though `6.7.1` exists.
+
+</details>
+
+<details>
+<summary>2. A prerelease, and the original range</summary>
+
+Mirror a prerelease, re-tagged from an upstream image, and scan for it now:
 
 ```sh
 skopeo copy --all --dest-tls-verify=false \
   docker://ghcr.io/stefanprodan/podinfo:6.7.1 \
   docker://localhost:5050/podinfo:6.8.0-rc.1
+flux --context k3d-dev reconcile image repository podinfo-test -n flux-system
 ```
+
+```yaml
+# scratch/08/image.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  image: k3d-registry.localhost:5000/podinfo
+  interval: 1m
+  insecure: true
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: podinfo-test
+  policy:
+    # ── new ──
+    semver:
+      range: ">=6.0.0 <7.0.0"
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/08/image.yaml
+flux --context k3d-dev get images policy podinfo-test -n flux-system
+```
+
+Still `6.7.1`: semver ranges skip prereleases.
+
+</details>
+
+<details>
+<summary>3. Let prereleases in</summary>
+
+```yaml
+# scratch/08/image.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  image: k3d-registry.localhost:5000/podinfo
+  interval: 1m
+  insecure: true
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: podinfo-test
+  policy:
+    # ── new ──
+    semver:
+      range: ">=6.0.0-0"
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/08/image.yaml
+flux --context k3d-dev get images policy podinfo-test -n flux-system
+```
+
+Now `6.8.0-rc.1` wins.
+
+</details>
+
+<details>
+<summary>4. Alphabetical instead of semver</summary>
+
+```yaml
+# scratch/08/image.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  image: k3d-registry.localhost:5000/podinfo
+  interval: 1m
+  insecure: true
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: podinfo-test
+  policy:
+    # ── new ──
+    alphabetical:
+      order: asc
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/08/image.yaml
+flux --context k3d-dev get images policy podinfo-test -n flux-system
+```
+
+It sorts tags as strings, so whichever sorts last wins. That's why semver
+exists. Back to the original range:
+
+```yaml
+# scratch/08/image.yaml
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  image: k3d-registry.localhost:5000/podinfo
+  interval: 1m
+  insecure: true
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: podinfo-test
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: podinfo-test
+  policy:
+    # ── new ──
+    semver:
+      range: ">=6.0.0 <7.0.0"
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/08/image.yaml
+flux --context k3d-dev get images policy podinfo-test -n flux-system
+```
+
+</details>
 
 ### Clean up
 
@@ -237,7 +424,14 @@ registry and this cluster's branch.
        strategy: Setters
    # ── end new ──
    ```
-3. Push. From now on, `git pull` before every commit: Flux commits too.
+3. Commit and push:
+   ```sh
+   git add apps/
+   git commit -m "Image automation for podinfo"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   ```
+   From now on, `git pull` before every commit: Flux commits too.
 4. **Release**: mirror `6.7.1` (lesson 7). Watch
    `kubectl --context k3d-dev get imagepolicies -n podinfo -w`, then Flux's
    commit on GitHub, then

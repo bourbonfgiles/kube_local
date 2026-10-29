@@ -108,21 +108,138 @@ A `cart` pod restarts, and the PodChaos shows the record.
 
 sofka / k9s: `:pods -n otel-demo`, `d` on the PodChaos.
 
-Delete it before applying again: a one-off experiment runs once.
+A one-off experiment runs once. To run it again, delete it and re-apply:
+
+```sh
+kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
+kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
+```
 
 ### 3. Iterate
 
-Edit, delete, re-apply:
-
-| Try | Then look at |
-| --- | --- |
-| Drop `labelSelectors` | A random demo pod dies each time. Which ones does the shop notice? |
-| `mode: fixed-percent`, `value: "50"` | Half the namespace at once |
-| `action: container-kill`, `containerNames: [cart]` | The container restarts; the pod survives |
-| A `NetworkChaos` (below) on `cart` | Slow spans in Jaeger for the next two minutes |
+Steps 1 to 3 edit `scratch/14/pod-kill.yaml`, each building on the last, and
+re-create the experiment. New or changed lines sit between `# ── new ──` and
+`# ── end new ──`.
 
 <details>
-<summary>200ms latency on cart for two minutes</summary>
+<summary>1. No label selector</summary>
+
+The same file with `labelSelectors` removed:
+
+```yaml
+# scratch/14/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-one
+  namespace: otel-demo
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces: [otel-demo]
+```
+
+```sh
+kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
+kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
+kubectl --context k3d-dev get pods -n otel-demo -w
+```
+
+A random demo pod dies each time. Which ones does the shop notice?
+
+</details>
+
+<details>
+<summary>2. Half the namespace</summary>
+
+```yaml
+# scratch/14/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-one
+  namespace: otel-demo
+spec:
+  action: pod-kill
+  # ── new ──
+  mode: fixed-percent
+  value: "50"
+  # ── end new ──
+  selector:
+    namespaces: [otel-demo]
+```
+
+```sh
+kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
+kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
+kubectl --context k3d-dev get pods -n otel-demo -w
+```
+
+Half the namespace at once.
+
+</details>
+
+<details>
+<summary>3. Kill a container, not the pod</summary>
+
+```yaml
+# scratch/14/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-one
+  namespace: otel-demo
+spec:
+  # ── new ──
+  action: container-kill
+  # ── end new ──
+  # ── new ──
+  mode: one
+  # ── end new ──
+  # ── new ──
+  containerNames: [cart]
+  # ── end new ──
+  selector:
+    namespaces: [otel-demo]
+    # ── new ──
+    labelSelectors:
+      app.kubernetes.io/component: cart
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
+kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
+kubectl --context k3d-dev get pods -n otel-demo -w
+kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart
+```
+
+The container restarts (`RESTARTS` goes up); the pod survives. Put the file
+back as it was in "One experiment, once":
+
+```yaml
+# scratch/14/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: kill-one
+  namespace: otel-demo
+spec:
+  # ── new ──
+  action: pod-kill
+  # ── end new ──
+  mode: one
+  selector:
+    namespaces: [otel-demo]
+    labelSelectors:
+      app.kubernetes.io/component: cart
+```
+
+</details>
+
+<details>
+<summary>4. 200ms latency on cart for two minutes</summary>
 
 ```yaml
 # scratch/14/latency.yaml
@@ -141,6 +258,18 @@ spec:
   delay:
     latency: 200ms
   duration: 2m
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/14/latency.yaml
+kubectl --context k3d-dev -n otel-demo describe networkchaos cart-latency
+```
+
+Slow spans in Jaeger for the next two minutes. It stops on its own; remove
+the record:
+
+```sh
+kubectl --context k3d-dev delete -f scratch/14/latency.yaml
 ```
 
 </details>
@@ -335,7 +464,15 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
          latency: 200ms
        duration: 2m
    ```
-4. Push. `kubectl --context k3d-dev get schedules -n chaos` shows them, paused.
+4. Commit, push, and look:
+   ```sh
+   git add clusters/ infrastructure/ chaos/
+   git commit -m "Chaos Mesh and paused experiments"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev get schedules -n chaos
+   ```
+   They're there, paused.
    sofka / k9s: `:schedules -n chaos`.
 
 > [!WARNING]
@@ -358,8 +495,14 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
    kubectl --context k3d-dev -n chaos annotate schedules --all \
      experiment.chaos-mesh.org/pause=true --overwrite
    ```
-   Fix Git, then `flux --context k3d-dev resume kustomization chaos`. To
-   suspend from a TUI: sofka `t`; k9s `Shift-t` (dotfiles plugin).
+   Fix Git and push, then resume Flux and lift the pause:
+   ```sh
+   flux --context k3d-dev resume kustomization chaos
+   kubectl --context k3d-dev -n chaos annotate schedules --all \
+     experiment.chaos-mesh.org/pause-
+   ```
+   From a TUI, sofka `t` suspends and resumes; k9s `Shift-t` (dotfiles
+   plugin).
 4. Harder: decide which demo services cope with losing a pod and which don't,
    then fix one with `replicas: 2` and a PodDisruptionBudget in its values, and
    prove it with the same experiment.

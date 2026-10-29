@@ -106,13 +106,6 @@ sofka / k9s: `s` on the pod, then `rcon-cli list` and `rcon-cli tps`.
 
 ### 4. Iterate
 
-| Try | Then look at |
-| --- | --- |
-| `memory: 1024M` | Startup time and `rcon-cli tps` under load |
-| `limits.memory` below heap plus overhead (`2304Mi` with a 2048M heap) | An OOM kill under load: `describe pod` shows `OOMKilled` under `Last State` |
-| Delete the pod | The world survives on the PVC |
-| `helm uninstall` then reinstall | Does the world survive? Check the PVC's reclaim behaviour |
-
 Memory against the limit, and the world on its PVC:
 
 ```sh
@@ -127,6 +120,159 @@ on memory:
   five-minute trend; `X` says `OOMKilled`; `x` on the PVC browses its files
   through the server pod ([lesson 0](00-tools.md)).
 - k9s: the `%MEM/L` column in `:pods -n minecraft`.
+
+The first two steps edit `scratch/13/values-base.yaml` and put it back. New
+or changed lines sit between `# ── new ──` and `# ── end new ──`.
+
+<details>
+<summary>1. A smaller heap</summary>
+
+```yaml
+# scratch/13/values-base.yaml
+minecraftServer:
+  eula: "TRUE"          # you accept the Minecraft EULA
+  type: VANILLA
+  version: "26.3"
+  # ── new ──
+  memory: 1024M
+  # ── end new ──
+  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+resources:
+  requests: {cpu: 500m, memory: 2560Mi}
+  limits: {memory: 3Gi}
+persistence:
+  dataDir:
+    enabled: true
+    Size: 5Gi           # capital S in this chart
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install minecraft minecraft \
+  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
+  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
+kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
+kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
+```
+
+Compare the startup time in the logs, and `tps` with players on. Put it back:
+
+```yaml
+# scratch/13/values-base.yaml
+minecraftServer:
+  eula: "TRUE"          # you accept the Minecraft EULA
+  type: VANILLA
+  version: "26.3"
+  # ── new ──
+  memory: 2048M
+  # ── end new ──
+  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+resources:
+  requests: {cpu: 500m, memory: 2560Mi}
+  limits: {memory: 3Gi}
+persistence:
+  dataDir:
+    enabled: true
+    Size: 5Gi           # capital S in this chart
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install minecraft minecraft \
+  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
+  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
+```
+
+</details>
+
+<details>
+<summary>2. A limit below heap plus overhead</summary>
+
+```yaml
+# scratch/13/values-base.yaml
+minecraftServer:
+  eula: "TRUE"          # you accept the Minecraft EULA
+  type: VANILLA
+  version: "26.3"
+  memory: 2048M
+  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+resources:
+  requests: {cpu: 500m, memory: 2560Mi}
+  # ── new ──
+  limits: {memory: 2304Mi}
+  # ── end new ──
+persistence:
+  dataDir:
+    enabled: true
+    Size: 5Gi           # capital S in this chart
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install minecraft minecraft \
+  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
+  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
+kubectl --context k3d-dev -n minecraft get pods -w
+kubectl --context k3d-dev -n minecraft describe pods -l app=minecraft
+```
+
+Under load it's OOM killed: `describe` shows `OOMKilled` under `Last State`.
+Put it back:
+
+```yaml
+# scratch/13/values-base.yaml
+minecraftServer:
+  eula: "TRUE"          # you accept the Minecraft EULA
+  type: VANILLA
+  version: "26.3"
+  memory: 2048M
+  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+resources:
+  requests: {cpu: 500m, memory: 2560Mi}
+  # ── new ──
+  limits: {memory: 3Gi}
+  # ── end new ──
+persistence:
+  dataDir:
+    enabled: true
+    Size: 5Gi           # capital S in this chart
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install minecraft minecraft \
+  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
+  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
+```
+
+</details>
+
+<details>
+<summary>3. Delete the pod</summary>
+
+```sh
+kubectl --context k3d-dev -n minecraft delete pods -l app=minecraft
+kubectl --context k3d-dev -n minecraft get pods -w
+kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
+```
+
+The Deployment makes a new pod, and the world survives on the PVC: rejoin
+and it's as you left it.
+
+</details>
+
+<details>
+<summary>4. Uninstall, then reinstall</summary>
+
+```sh
+helm --kube-context k3d-dev uninstall minecraft -n minecraft
+kubectl --context k3d-dev get pvc,pv -A | grep minecraft
+helm --kube-context k3d-dev upgrade --install minecraft minecraft \
+  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
+  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
+kubectl --context k3d-dev get pvc -n minecraft
+```
+
+Does the world survive? The PVC's age, and the PV's reclaim policy in
+`kubectl --context k3d-dev get pv`, tell you.
+
+</details>
 
 ### 5. Clean up
 

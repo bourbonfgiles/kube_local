@@ -153,14 +153,119 @@ while true; do curl -s -H 'Host: canary.kube.internal' http://10.89.0.200/ | jq 
 
 ### 5. Iterate
 
-| Try | Then look at |
-| --- | --- |
-| `stepWeight: 25`, release again | Fewer, bigger steps |
-| Release with `--set faults.error=true` | No metrics yet, so nothing notices: it promotes. That's why step 6 exists. |
-| A `MetricTemplate` (below) in `analysis.metrics`, then the faulty release again | Rolls back after `threshold` failed checks |
+Flagger starts a canary whenever the Deployment's pod template changes, so
+each release below changes the tag or a value. Keep the `curl` loop running.
+New or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
 <details>
-<summary>A MetricTemplate using Hubble's HTTP metrics</summary>
+<summary>1. Bigger steps</summary>
+
+```yaml
+# scratch/09/canary.yaml
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: canary-demo
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  service:
+    port: 9898
+    hosts: [canary.kube.internal]
+    gatewayRefs:
+      - name: web
+        namespace: gateway
+  analysis:
+    interval: 30s
+    threshold: 3
+    # ── new ──
+    stepWeight: 25
+    # ── end new ──
+    maxWeight: 50
+    webhooks:
+      - name: load
+        url: http://loadtester.canary-demo/
+        metadata:
+          cmd: "hey -z 1m -q 10 -c 2 -host canary.kube.internal http://cilium-gateway-web.gateway/"
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/09/canary.yaml
+helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/podinfo \
+  --version 6.7.1 -n canary-demo --reuse-values --set image.tag=6.7.0
+kubectl --context k3d-dev get canaries -n canary-demo -w
+```
+
+Fewer, bigger steps. Back to 10:
+
+```yaml
+# scratch/09/canary.yaml
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: canary-demo
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  service:
+    port: 9898
+    hosts: [canary.kube.internal]
+    gatewayRefs:
+      - name: web
+        namespace: gateway
+  analysis:
+    interval: 30s
+    threshold: 3
+    # ── new ──
+    stepWeight: 10
+    # ── end new ──
+    maxWeight: 50
+    webhooks:
+      - name: load
+        url: http://loadtester.canary-demo/
+        metadata:
+          cmd: "hey -z 1m -q 10 -c 2 -host canary.kube.internal http://cilium-gateway-web.gateway/"
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/09/canary.yaml
+```
+
+</details>
+
+<details>
+<summary>2. A faulty release, with nothing watching</summary>
+
+```sh
+helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/podinfo \
+  --version 6.7.1 -n canary-demo --reuse-values \
+  --set image.tag=6.7.1 --set faults.error=true
+kubectl --context k3d-dev get canaries -n canary-demo -w
+```
+
+No metrics yet, so nothing notices: it promotes. That's why the next step
+exists. Release the fix the same way:
+
+```sh
+helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/podinfo \
+  --version 6.7.1 -n canary-demo --reuse-values --set faults.error=false
+kubectl --context k3d-dev get canaries -n canary-demo -w
+```
+
+Wait for `Succeeded`.
+
+</details>
+
+<details>
+<summary>3. A metric check, and the faulty release again</summary>
+
+A MetricTemplate using Hubble's HTTP metrics:
 
 ```yaml
 # scratch/09/error-rate.yaml
@@ -179,7 +284,12 @@ spec:
     sum(rate(hubble_http_requests_total{destination_namespace="canary-demo",destination_workload="podinfo"}[1m]))
 ```
 
-And in the Canary's `analysis`:
+`destination_workload` and `destination_namespace` only exist with the
+`labelsContext` option from lesson 6. Run the query in Prometheus first. It
+counts the canary's share of traffic: Flagger's canary pods run as Deployment
+`podinfo`, primary as `podinfo-primary`.
+
+The Canary, with the check:
 
 ```yaml
 # scratch/09/canary.yaml
@@ -220,10 +330,22 @@ spec:
           cmd: "hey -z 1m -q 10 -c 2 -host canary.kube.internal http://cilium-gateway-web.gateway/"
 ```
 
-`destination_workload` and `destination_namespace` only exist with the
-`labelsContext` option from lesson 6. Run the query in Prometheus first. It
-counts the canary's share of traffic: Flagger's canary pods run as Deployment
-`podinfo`, primary as `podinfo-primary`.
+```sh
+kubectl --context k3d-dev apply -f scratch/09/error-rate.yaml -f scratch/09/canary.yaml
+helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/podinfo \
+  --version 6.7.1 -n canary-demo --reuse-values \
+  --set image.tag=6.7.0 --set faults.error=true
+kubectl --context k3d-dev get canaries -n canary-demo -w
+```
+
+It rolls back after `threshold` failed checks. The primary keeps serving the
+last good version; release the fix to get the Deployment back in step:
+
+```sh
+helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/podinfo \
+  --version 6.7.1 -n canary-demo --reuse-values --set faults.error=false
+kubectl --context k3d-dev get canaries -n canary-demo -w
+```
 
 </details>
 
@@ -453,7 +575,22 @@ Now for the real podinfo, so lesson 8's commits become canaries.
          tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
    ```
 5. Push Flagger first and wait for it to be `Ready`: the Canary and
-   MetricTemplate kinds come from its chart.
+   MetricTemplate kinds come from its chart:
+   ```sh
+   git add infrastructure/
+   git commit -m "Flagger with Flux"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev get helmreleases -n flagger-system -w
+   ```
+   Then the rest:
+   ```sh
+   git add apps/
+   git commit -m "Canary releases for podinfo"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev get canaries -n podinfo -w
+   ```
 
 ## Exercises
 
