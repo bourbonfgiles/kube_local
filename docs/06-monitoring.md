@@ -50,7 +50,8 @@ exposes.
 Cilium's metrics are turned on through its values. Roughly 2 GB of spare
 memory.
 
-**On your machine**: `kubectl`, `helm`, `flux`, `k9s`, `sofka`, `hubble`.
+**On your machine**: `kubectl`, `helm`, `flux`, `hubble`, and `sofka`
+or `k9s` ([lesson 0](00-tools.md)).
 
 ## Install by hand
 
@@ -92,10 +93,19 @@ helm --kube-context k3d-dev upgrade --install kube-prometheus-stack kube-prometh
 
 ### 2. Look at it
 
-- Prometheus: k9s `:svc -n monitoring`, `Shift-f` on
-  `kube-prometheus-stack-prometheus` port 9090, then <http://localhost:9090/targets>.
-- Grafana: `Shift-f` on `kube-prometheus-stack-grafana` port 80. The login is
-  in Secret `kube-prometheus-stack-grafana`: `:secrets -n monitoring`, `x`.
+```sh
+kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090
+kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80
+kubectl --context k3d-dev -n monitoring get secret kube-prometheus-stack-grafana \
+  -o jsonpath='{.data.admin-password}' | base64 -d
+```
+
+- Prometheus: <http://localhost:9090/targets>, with the first forward running.
+- Grafana: <http://localhost:3000>, user `admin` and the password above.
+
+sofka / k9s: `:svc -n monitoring`, then forward on the Service (sofka `f`,
+k9s `Shift-f`); `:pf` lists running forwards. The password:
+`:secrets -n monitoring`, `x`.
 
 ### 3. Your own ServiceMonitor
 
@@ -133,16 +143,10 @@ Within a minute `podinfo` is on the targets page. In Prometheus, query
 | Set `serviceMonitorSelectorNilUsesHelmValues: true`, upgrade | Your ServiceMonitor is ignored: Prometheus only picks up the chart's own |
 | `interval: 5s` | Smoother graphs, more samples |
 
-**Where to look**
+`kubectl --context k3d-dev get servicemonitors -A` lists what Prometheus can
+pick up.
 
-| Check | kubectl | k9s | sofka |
-| --- | --- | --- | --- |
-| Prometheus | `kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090` | `:svc -n monitoring`, `Shift-f` | `:svc -n monitoring`, `f`, pick 9090 |
-| Grafana | `kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80` | `Shift-f`, port 80 | `f`, port 80 |
-| Grafana's password | `kubectl --context k3d-dev -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' \| base64 -d` | `:secrets -n monitoring`, `x` | `:secrets -n monitoring`, `x` |
-| Forwards running | The terminals running `port-forward` | `:pf` | `:pf` |
-| Your ServiceMonitor | `kubectl --context k3d-dev get servicemonitors -A` | `:servicemonitors -A` | `:servicemonitors -A` |
-| Releases (Flux part) | `kubectl --context k3d-dev get helmreleases -A` | `:helmreleases -A`, `ctrl-z` | `:helmreleases -A`, `ctrl-z` |
+sofka / k9s: `:servicemonitors -A`
 
 ### 5. Clean up
 
@@ -205,8 +209,10 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
          namespace: monitoring
    ```
    Keep `cilium/values.yaml` matching (lesson 2).
-4. Push. The targets page now lists `cilium-agent`, `cilium-operator` and
-   `hubble`, all `UP`.
+4. Push. `kubectl --context k3d-dev get helmreleases -A` until all are
+   `Ready`, and the targets page lists `cilium-agent`, `cilium-operator` and
+   `hubble`, all `UP`. sofka / k9s: `ctrl-z` on `:helmreleases -A` leaves only
+   the ones not ready.
 
 ## Exercises
 
@@ -226,8 +232,9 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
 - Without the selector settings, Prometheus only scrapes the chart's own
   ServiceMonitors, and every other chart's are silently ignored.
 - Cilium's chart refuses to render ServiceMonitors until their CRD exists.
-  That's what its `dependsOn` is for. sofka's `:gitops` on the `cilium`
-  HelmRelease shows the edge and whether it's met.
+  That's what its `dependsOn` is for. A sofka extra
+  ([lesson 0](00-tools.md)): `:gitops` on the `cilium` HelmRelease shows the
+  edge and whether it's met.
 - HTTP metrics (`httpV2`) only exist for traffic Cilium parses at L7: traffic
   through the Gateway, or pods with an L7 CiliumNetworkPolicy.
 - Upgrading `prometheus-operator-crds` across a major version can need manual
