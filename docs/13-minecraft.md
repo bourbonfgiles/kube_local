@@ -44,7 +44,7 @@ service.
 
 | Tool | Why |
 | --- | --- |
-| `kubectl`, `helm`, `flux`, `k9s`, `git` | As usual |
+| `kubectl`, `helm`, `flux`, `k9s`, `sofka`, `git` | As usual |
 | `bpftrace`, BCC tools in `/usr/share/bcc/tools/` | Profiling. The dotfiles `bpf` step, then a reboot. |
 | A Minecraft Java client | Joining |
 
@@ -107,6 +107,16 @@ rcon-cli tps
 | Delete the pod | The world survives on the PVC |
 | `helm uninstall` then reinstall | Does the world survive? Check the PVC's reclaim behaviour |
 
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| Server log, until `Done` | `kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f` | `:pods -n minecraft`, `l` | `:pods -n minecraft`, `l` |
+| The console | `kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli list` | `s` on the pod | `s` on the pod |
+| Memory against the limit | `kubectl --context k3d-dev -n minecraft top pod` | `:pods -n minecraft`, `%MEM/L` | `⏎` on the pod: memory as a share of request and limit, with a five-minute trend |
+| An OOM kill | `kubectl --context k3d-dev -n minecraft describe pod <name>`, `Last State` | `d` | `X`: `OOMKilled` |
+| The world on the PVC | `kubectl --context k3d-dev get pvc -n minecraft` | `:pvc -n minecraft` | `x` on the PVC: browse its files through the server pod |
+
 ### 5. Clean up
 
 ```sh
@@ -163,7 +173,9 @@ This is the hard part, so it comes last. All of it runs on your machine.
    cp mc.svg ~/Downloads/   # Zen can only open files from there
    ```
 6. Watch an OOM kill as it happens: lower the memory limit in base values,
-   push, add load, and run `sudo /usr/share/bcc/tools/oomkill`.
+   push, add load, and run `sudo /usr/share/bcc/tools/oomkill`. Compare what
+   the cluster records: sofka's `X` on the pod says `OOMKilled`, `oomkill`
+   says which process the kernel chose and how big it was.
 
 ## Exercises
 
