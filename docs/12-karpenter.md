@@ -190,7 +190,7 @@ kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
 
 ```sh
 kubectl --context k3d-dev get nodeclaims,nodes -w
-kubectl --context k3d-dev describe nodeclaim <name>
+kubectl --context k3d-dev describe nodeclaims
 ```
 
 Nodes appear, and each NodeClaim shows the instance type Karpenter chose and
@@ -200,20 +200,13 @@ sofka / k9s: `:nodeclaims`, `:nodes`, `d` on a NodeClaim
 
 ### 7. Iterate
 
-| Try | Then look at |
-| --- | --- |
-| Scale to 2 | Consolidation removes nodes, after `consolidateAfter` |
-| `disruption: {consolidationPolicy: WhenEmpty, consolidateAfter: 30s}` on the NodePool | Only empty nodes go; half-empty ones stay |
-| `limits.cpu: 8`, scale to 20 | Some pods stay `Pending`; the NodeClaim events say the limit was hit |
-| A disruption `budgets` entry `nodes: "1"` | Consolidation removes one node at a time |
-
 When pods stay `Pending`, find them, ask why, and see what each node has
 promised and what Karpenter thinks:
 
 ```sh
 kubectl --context k3d-dev -n default get pods --field-selector=status.phase=Pending
-kubectl --context k3d-dev -n default describe pod <name>
-kubectl --context k3d-dev describe node <name>     # Allocated resources
+kubectl --context k3d-dev -n default describe pods -l app=inflate
+kubectl --context k3d-dev describe nodes -l karpenter.sh/nodepool=default   # Allocated resources
 kubectl --context k3d-dev -n kube-system logs deploy/karpenter -f
 ```
 
@@ -225,6 +218,251 @@ sofka / k9s: `ctrl-z` on `:pods -n default`, `d` on a pod or node;
 > A sofka extra ([lesson 0](00-tools.md)): `X` on a node checks Ready,
 > cordon, taints and pod capacity. On a fake node it shows the `kwok` taint,
 > and during consolidation, the cordon Karpenter put on before draining it.
+
+Steps 2 to 4 edit `scratch/12/nodepool.yaml`, each building on the last. New
+or changed lines sit between `# ── new ──` and `# ── end new ──`.
+
+<details>
+<summary>1. Scale down</summary>
+
+```sh
+kubectl --context k3d-dev -n default scale deployment inflate --replicas 2
+kubectl --context k3d-dev get nodeclaims,nodes -w
+```
+
+Consolidation removes nodes, after `consolidateAfter`.
+
+</details>
+
+<details>
+<summary>2. Only empty nodes go</summary>
+
+```yaml
+# scratch/12/nodepool.yaml
+apiVersion: karpenter.kwok.sh/v1alpha1
+kind: KWOKNodeClass
+metadata:
+  name: default
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.kwok.sh
+        kind: KWOKNodeClass
+        name: default
+      taints:
+        - key: kwok
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+  # ── new ──
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+  # ── end new ──
+  limits:
+    cpu: 64
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
+kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
+kubectl --context k3d-dev get nodeclaims,nodes -w
+```
+
+Once the nodes are up:
+
+```sh
+kubectl --context k3d-dev -n default scale deployment inflate --replicas 2
+kubectl --context k3d-dev get nodeclaims,nodes -w
+```
+
+Empty nodes go; half-empty ones stay.
+
+</details>
+
+<details>
+<summary>3. A CPU limit on the pool</summary>
+
+```yaml
+# scratch/12/nodepool.yaml
+apiVersion: karpenter.kwok.sh/v1alpha1
+kind: KWOKNodeClass
+metadata:
+  name: default
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.kwok.sh
+        kind: KWOKNodeClass
+        name: default
+      taints:
+        - key: kwok
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+  limits:
+    # ── new ──
+    cpu: 8
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
+kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
+kubectl --context k3d-dev -n default get pods --field-selector=status.phase=Pending
+kubectl --context k3d-dev get events -A --field-selector involvedObject.kind=NodePool
+```
+
+Some pods stay `Pending`, and the events say the limit was hit. Back to 64:
+
+```yaml
+# scratch/12/nodepool.yaml
+apiVersion: karpenter.kwok.sh/v1alpha1
+kind: KWOKNodeClass
+metadata:
+  name: default
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.kwok.sh
+        kind: KWOKNodeClass
+        name: default
+      taints:
+        - key: kwok
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+  limits:
+    # ── new ──
+    cpu: 64
+    # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
+```
+
+</details>
+
+<details>
+<summary>4. One node at a time</summary>
+
+```yaml
+# scratch/12/nodepool.yaml
+apiVersion: karpenter.kwok.sh/v1alpha1
+kind: KWOKNodeClass
+metadata:
+  name: default
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.kwok.sh
+        kind: KWOKNodeClass
+        name: default
+      taints:
+        - key: kwok
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+  disruption:
+    consolidationPolicy: WhenEmpty
+    consolidateAfter: 30s
+    # ── new ──
+    budgets:
+      - nodes: "1"
+    # ── end new ──
+  limits:
+    cpu: 64
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
+kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
+kubectl --context k3d-dev get nodeclaims,nodes -w
+```
+
+Once the nodes are up:
+
+```sh
+kubectl --context k3d-dev -n default scale deployment inflate --replicas 2
+kubectl --context k3d-dev get nodeclaims,nodes -w
+```
+
+Consolidation removes one node at a time. Put the NodePool back as it was in
+step 5:
+
+```yaml
+# scratch/12/nodepool.yaml
+apiVersion: karpenter.kwok.sh/v1alpha1
+kind: KWOKNodeClass
+metadata:
+  name: default
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.kwok.sh
+        kind: KWOKNodeClass
+        name: default
+      taints:
+        - key: kwok
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+  limits:
+    cpu: 64
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
+```
+
+</details>
 
 ### 8. Clean up
 

@@ -68,7 +68,7 @@ A throwaway Secret to see what SOPS does:
 mkdir -p scratch/05
 kubectl --context k3d-dev -n default create secret generic demo \
   --from-literal=password=hunter2 --dry-run=client -o yaml > scratch/05/demo.yaml
-sops --encrypt --age age1... --encrypted-regex '^(data|stringData)$' --in-place scratch/05/demo.yaml
+sops --encrypt --age "$(age-keygen -y ~/.config/sops/age/keys.txt)" --encrypted-regex '^(data|stringData)$' --in-place scratch/05/demo.yaml
 cat scratch/05/demo.yaml
 ```
 
@@ -90,12 +90,66 @@ sofka / k9s: `:secrets -n default`, `x` on `demo`
 
 ### 3. Iterate
 
-| Try | Then look at |
-| --- | --- |
-| `sops scratch/05/demo.yaml` | It opens decrypted in your editor and re-encrypts on save |
-| Change the password that way, then `git diff --no-index` against a copy | Only that value's ciphertext and the `sops.mac` change |
-| Drop `--encrypted-regex` and encrypt a fresh copy | Every value is encrypted, even `metadata.name`, and Kubernetes rejects it |
-| Move `keys.txt` aside and `sops --decrypt` | The error you'd get on a machine without the key. Put it back. |
+<details>
+<summary>1. Edit it encrypted</summary>
+
+```sh
+sops scratch/05/demo.yaml
+```
+
+It opens decrypted in your editor and re-encrypts on save. `data` holds
+base64, as in any Secret.
+
+</details>
+
+<details>
+<summary>2. What a change looks like in Git</summary>
+
+Keep a copy, set a new password, and compare:
+
+```sh
+cp scratch/05/demo.yaml scratch/05/demo.before.yaml
+sops set scratch/05/demo.yaml '["data"]["password"]' "\"$(printf hunter3 | base64)\""
+git diff --no-index scratch/05/demo.before.yaml scratch/05/demo.yaml
+```
+
+Only that value's ciphertext and the `sops.mac` change.
+
+</details>
+
+<details>
+<summary>3. Encrypt everything</summary>
+
+A fresh copy without `--encrypted-regex`:
+
+```sh
+kubectl --context k3d-dev -n default create secret generic demo-all \
+  --from-literal=password=hunter2 --dry-run=client -o yaml > scratch/05/demo-all.yaml
+sops --encrypt --age "$(age-keygen -y ~/.config/sops/age/keys.txt)" --in-place scratch/05/demo-all.yaml
+cat scratch/05/demo-all.yaml
+sops --decrypt scratch/05/demo-all.yaml | kubectl --context k3d-dev apply -f - --dry-run=server
+kubectl --context k3d-dev apply -f scratch/05/demo-all.yaml --dry-run=server
+```
+
+Every value is encrypted, even `metadata.name`. Decrypted, it applies; as
+committed, Kubernetes rejects it.
+
+</details>
+
+<details>
+<summary>4. A machine without the key</summary>
+
+```sh
+mv ~/.config/sops/age/keys.txt ~/.config/sops/age/keys.txt.aside
+sops --decrypt scratch/05/demo.yaml
+mv ~/.config/sops/age/keys.txt.aside ~/.config/sops/age/keys.txt
+sops --decrypt scratch/05/demo.yaml
+```
+
+The first `--decrypt` fails as it would anywhere without the key; the second
+works again.
+
+</details>
 
 ### 4. Clean up
 
@@ -119,7 +173,7 @@ kubectl --context k3d-dev -n default delete secret demo
    creation_rules:
      - path_regex: secrets/.*\.yaml$
        encrypted_regex: ^(data|stringData)$
-       age: age1...   # your public key
+       age: age1...   # yours: age-keygen -y ~/.config/sops/age/keys.txt
    ```
 2. Give Flux the private key:
    ```sh
@@ -165,8 +219,12 @@ kubectl --context k3d-dev -n default delete secret demo
        secretRef:
          name: sops-age
    ```
-6. `git add .sops.yaml clusters/dev/secrets.yaml secrets/`, commit, push.
+6. Commit, push, and look:
    ```sh
+   git add .sops.yaml clusters/dev/secrets.yaml secrets/
+   git commit -m "Encrypted secrets with SOPS"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
    kubectl --context k3d-dev -n flux-system get kustomization secrets
    kubectl --context k3d-dev -n external-dns get secret externaldns-tsig -o yaml
    ```

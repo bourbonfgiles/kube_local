@@ -137,11 +137,171 @@ Within a minute `podinfo` is on the targets page. In Prometheus, query
 
 ### 4. Iterate
 
-| Try | Then look at |
-| --- | --- |
-| Change `matchLabels` to a label podinfo doesn't have | The target disappears; nothing errors |
-| Set `serviceMonitorSelectorNilUsesHelmValues: true`, upgrade | Your ServiceMonitor is ignored: Prometheus only picks up the chart's own |
-| `interval: 5s` | Smoother graphs, more samples |
+With the Prometheus port-forward from step 2 running, this lists what it
+scrapes:
+
+```sh
+curl -s 'http://localhost:9090/api/v1/targets?state=active' \
+  | jq -r '.data.activeTargets[].scrapePool' | sort -u
+```
+
+Each step changes one file and then puts it back. New or changed lines sit
+between `# ── new ──` and `# ── end new ──`.
+
+<details>
+<summary>1. A selector that matches nothing</summary>
+
+```yaml
+# scratch/06/podinfo-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  selector:
+    matchLabels:
+      # ── new ──
+      app.kubernetes.io/name: nope
+      # ── end new ──
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
+curl -s 'http://localhost:9090/api/v1/targets?state=active' \
+  | jq -r '.data.activeTargets[].scrapePool' | sort -u
+```
+
+Within a minute `serviceMonitor/podinfo/podinfo/0` is gone, and nothing
+errors. Put it back:
+
+```yaml
+# scratch/06/podinfo-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  selector:
+    matchLabels:
+      # ── new ──
+      app.kubernetes.io/name: podinfo
+      # ── end new ──
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
+```
+
+</details>
+
+<details>
+<summary>2. Only the chart's own ServiceMonitors</summary>
+
+```yaml
+# scratch/06/values-base.yaml
+crds:
+  enabled: false        # the other release owns them
+prometheus:
+  prometheusSpec:
+    # ── new ──
+    serviceMonitorSelectorNilUsesHelmValues: true
+    # ── end new ──
+    podMonitorSelectorNilUsesHelmValues: false
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install kube-prometheus-stack kube-prometheus-stack \
+  --repo https://prometheus-community.github.io/helm-charts --version 92.10.1 \
+  -n monitoring -f scratch/06/values-base.yaml -f scratch/06/values-local.yaml
+curl -s 'http://localhost:9090/api/v1/targets?state=active' \
+  | jq -r '.data.activeTargets[].scrapePool' | sort -u
+```
+
+Your ServiceMonitor is ignored: Prometheus only picks up the chart's own.
+Put it back:
+
+```yaml
+# scratch/06/values-base.yaml
+crds:
+  enabled: false        # the other release owns them
+prometheus:
+  prometheusSpec:
+    # ── new ──
+    serviceMonitorSelectorNilUsesHelmValues: false
+    # ── end new ──
+    podMonitorSelectorNilUsesHelmValues: false
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install kube-prometheus-stack kube-prometheus-stack \
+  --repo https://prometheus-community.github.io/helm-charts --version 92.10.1 \
+  -n monitoring -f scratch/06/values-base.yaml -f scratch/06/values-local.yaml
+```
+
+</details>
+
+<details>
+<summary>3. Scrape every 5 seconds</summary>
+
+```yaml
+# scratch/06/podinfo-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: podinfo
+  endpoints:
+    - port: http
+      path: /metrics
+      # ── new ──
+      interval: 5s
+      # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
+```
+
+Smoother graphs, more samples. Back to 15 seconds:
+
+```yaml
+# scratch/06/podinfo-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: podinfo
+  endpoints:
+    - port: http
+      path: /metrics
+      # ── new ──
+      interval: 15s
+      # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
+```
+
+</details>
 
 `kubectl --context k3d-dev get servicemonitors -A` lists what Prometheus can
 pick up.
@@ -368,8 +528,15 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
        - kind: ConfigMap
          name: cilium-values-local
    ```
-4. Push. `kubectl --context k3d-dev get helmreleases -A` until all are
-   `Ready`, and the targets page lists `cilium-agent`, `cilium-operator` and
+4. Commit, push, and watch:
+   ```sh
+   git add cilium/ infrastructure/
+   git commit -m "Monitoring with Flux"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev get helmreleases -A -w
+   ```
+   Every release goes `Ready`, and the targets page lists `cilium-agent`, `cilium-operator` and
    `hubble`, all `UP`. sofka / k9s: `ctrl-z` on `:helmreleases -A` leaves only
    the ones not ready.
 

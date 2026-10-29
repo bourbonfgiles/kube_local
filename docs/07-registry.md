@@ -112,16 +112,133 @@ sofka / k9s: `:pods -n default`, `d`, the `Image ID` line. sofka extra
 
 ### 4. Iterate
 
-Delete and re-apply the pod after each change:
+Each step edits `scratch/07/pod.yaml` and re-creates the pod: a pod's spec
+can't be changed in place. New or changed lines sit between `# ── new ──` and
+`# ── end new ──`.
 
-| Try | Then look at |
-| --- | --- |
-| `image: localhost:5050/podinfo:6.7.0` | `ErrImagePull`: inside the cluster, `localhost` is the node itself |
-| Pin by digest: `k3d-registry.localhost:5000/podinfo@sha256:...` | Works, and can never change under you |
-| Copy `6.7.1` over the `6.7.0` tag with skopeo, re-create the pod | Same tag, different `Image ID`. That's what ECR's tag immutability prevents. |
-| Copy without `--all` to a new tag, inspect its digest | Different from upstream: only your architecture was copied |
+<details>
+<summary>1. <code>localhost</code> from inside the cluster</summary>
 
-Put `6.7.0` back afterwards, from upstream.
+```yaml
+# scratch/07/pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mirror-test
+  namespace: default
+spec:
+  containers:
+    - name: podinfo
+      # ── new ──
+      image: localhost:5050/podinfo:6.7.0
+      # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev delete -f scratch/07/pod.yaml
+kubectl --context k3d-dev apply -f scratch/07/pod.yaml
+kubectl --context k3d-dev -n default describe pod mirror-test
+```
+
+`ErrImagePull`: inside the cluster, `localhost` is the node itself.
+
+</details>
+
+<details>
+<summary>2. Pin by digest</summary>
+
+The digest from step 2, the same upstream and in the mirror:
+
+```sh
+skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0
+```
+
+```yaml
+# scratch/07/pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mirror-test
+  namespace: default
+spec:
+  containers:
+    - name: podinfo
+      # ── new ──
+      image: k3d-registry.localhost:5000/podinfo@sha256:d2b3cd93a48acdc91327533ce28fcb3169b2d9feaf73817dc2eb68858df64edb
+      # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev delete -f scratch/07/pod.yaml
+kubectl --context k3d-dev apply -f scratch/07/pod.yaml
+kubectl --context k3d-dev -n default get pod mirror-test \
+  -o jsonpath='{.status.containerStatuses[0].imageID}'
+```
+
+It works, and can never change under you.
+
+</details>
+
+<details>
+<summary>3. Move a tag under a running pod</summary>
+
+Copy `6.7.1` over the `6.7.0` tag, and make the kubelet pull again rather than
+use the image it already has:
+
+```sh
+skopeo copy --all --dest-tls-verify=false \
+  docker://ghcr.io/stefanprodan/podinfo:6.7.1 \
+  docker://localhost:5050/podinfo:6.7.0
+```
+
+```yaml
+# scratch/07/pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mirror-test
+  namespace: default
+spec:
+  containers:
+    - name: podinfo
+      # ── new ──
+      image: k3d-registry.localhost:5000/podinfo:6.7.0
+      imagePullPolicy: Always
+      # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev delete -f scratch/07/pod.yaml
+kubectl --context k3d-dev apply -f scratch/07/pod.yaml
+kubectl --context k3d-dev -n default get pod mirror-test \
+  -o jsonpath='{.status.containerStatuses[0].imageID}'
+```
+
+Same tag, different `Image ID`. That's what ECR's tag immutability prevents.
+Put `6.7.0` back from upstream:
+
+```sh
+skopeo copy --all --dest-tls-verify=false \
+  docker://ghcr.io/stefanprodan/podinfo:6.7.0 \
+  docker://localhost:5050/podinfo:6.7.0
+```
+
+</details>
+
+<details>
+<summary>4. Copy one architecture only</summary>
+
+```sh
+skopeo copy --dest-tls-verify=false \
+  docker://ghcr.io/stefanprodan/podinfo:6.7.0 \
+  docker://localhost:5050/podinfo:6.7.0-single
+skopeo inspect --format '{{.Digest}}' docker://ghcr.io/stefanprodan/podinfo:6.7.0
+skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0-single
+```
+
+Different digests: without `--all`, only your architecture was copied.
+
+</details>
 
 ### 5. Clean up
 
@@ -160,8 +277,17 @@ data:
     # ── end new ──
 ```
 
-Push. `kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'`
-shows the local image.
+Commit, push, and check the image:
+
+```sh
+git add apps/
+git commit -m "podinfo from the local mirror"
+git push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
+```
+
+The local image.
 
 sofka / k9s: `:deploy -n podinfo`, `y`
 

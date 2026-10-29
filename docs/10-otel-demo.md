@@ -67,7 +67,8 @@ kubectl --context k3d-dev get deploy,sts,jobs,svc -n otel-demo
 
 Wait until everything is running (a few minutes; Kafka is slowest). The
 second command is the shape: every workload, and the Services between them.
-A `Pending` pod says why in `kubectl --context k3d-dev -n otel-demo describe pod <name>`.
+A `Pending` pod says why in
+`kubectl --context k3d-dev get events -n otel-demo --field-selector reason=FailedScheduling`.
 
 sofka / k9s: `:pods -n otel-demo`, `ctrl-z` for stragglers, `d` on one. They
 differ on the shape:
@@ -108,16 +109,109 @@ ExternalDNS names it. Open `http(s)://otel.kube.internal/` for the shop, and
 | Try | Then look at |
 | --- | --- |
 | In Jaeger, pick service `frontend`, find a `checkout` trace | Every span, including the Kafka hop to `accounting` |
-| `hubble observe -n otel-demo -f` (with the port-forward from lesson 1) | The same calls from the network's side |
-| Turn on `paymentFailure` in `/feature/` | Red spans in Jaeger, errors in Grafana. Turn it off. |
-| A second rule in the route: hostname `jaeger.otel.kube.internal` straight to the Jaeger Service | Find its name and port in `kubectl --context k3d-dev get svc -n otel-demo`. It may need its base path changed in values to work outside the proxy. |
-| A values file with `components.load-generator.envOverrides: [{name: LOCUST_USERS, value: "50"}]`, then `helm upgrade ... --reuse-values -f` it | More traffic everywhere |
+| Turn on `paymentFailure` in `/feature/` | Red spans in Jaeger, errors in Grafana. Turn it off again there. |
+
+The same calls from the network's side, with Hubble's port-forward running in
+another terminal:
+
+```sh
+cilium --context k3d-dev hubble port-forward     # terminal 1, leave running
+hubble observe -n otel-demo -f                    # terminal 2
+```
 
 `paymentFailure` from the inside:
-`kubectl --context k3d-dev -n otel-demo logs deploy/payment -f`.
+
+```sh
+kubectl --context k3d-dev -n otel-demo logs deploy/payment -f
+```
 
 sofka / k9s: `l` on `payment`. sofka extra: `J` lays out its JSON logs, and
 `ctrl-z` leaves only the errors.
+
+New or changed lines sit between `# ── new ──` and `# ── end new ──`.
+
+<details>
+<summary>1. Jaeger on its own hostname</summary>
+
+Jaeger's Service is `jaeger`, port `16686`, and it serves under
+`/jaeger/ui` because the chart sets that base path for the proxy. A second
+route in the same file:
+
+```yaml
+# scratch/10/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: otel
+  namespace: otel-demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [otel.kube.internal]
+  rules:
+    - backendRefs:
+        - name: frontend-proxy
+          port: 8080
+# ── new ──
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: jaeger
+  namespace: otel-demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [jaeger.otel.kube.internal]
+  rules:
+    - backendRefs:
+        - name: jaeger
+          port: 16686
+# ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/10/route.yaml
+kubectl --context k3d-dev get svc jaeger -n otel-demo
+curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger/ui/
+```
+
+`200` once ExternalDNS has the name. `/` on its own 404s: the base path stays
+`/jaeger/ui` unless you change it in values.
+
+</details>
+
+<details>
+<summary>2. More load</summary>
+
+```yaml
+# scratch/10/load.yaml
+components:
+  load-generator:
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "50"
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install otel-demo opentelemetry-demo \
+  --repo https://open-telemetry.github.io/opentelemetry-helm-charts --version 0.42.4 \
+  -n otel-demo -f scratch/10/load.yaml
+kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
+```
+
+`LOCUST_USERS=50`, and more traffic everywhere. Back to the chart's 5:
+
+```sh
+helm --kube-context k3d-dev upgrade --install otel-demo opentelemetry-demo \
+  --repo https://open-telemetry.github.io/opentelemetry-helm-charts --version 0.42.4 \
+  -n otel-demo
+kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
+```
+
+</details>
 
 ### 4. Clean up
 

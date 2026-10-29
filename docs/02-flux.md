@@ -55,7 +55,7 @@ controllers would use IAM roles for ECR and KMS instead of tokens and keys.
 | `flux` | Install, bootstrap, and everything kubectl can't do |
 | `kubectl`, `helm`, `git` | As usual |
 | `sofka` or `k9s` | [Lesson 0](00-tools.md) |
-| A GitHub fine-grained token on `kube_local` | Bootstrap creates a deploy key and commits. Permissions: Administration read/write, Contents read/write, Metadata read |
+| A GitHub fine-grained token | Only for bootstrap; [made just before it](#a-token-for-bootstrap) and not kept |
 
 Check the cluster is ready for Flux:
 
@@ -136,17 +136,354 @@ sofka / k9s: `:ocirepositories -A`, `:helmreleases -A`, `:pods -n podinfo`
 
 ### 3. Iterate
 
-Each of these is an edit to `scratch/02/podinfo.yaml` and a re-apply, unless
-it says otherwise:
+Edit `scratch/02/podinfo.yaml` in six steps, each building on the last. New
+and changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-| Try | Then look at |
-| --- | --- |
-| Change `ui.message` | `helm --kube-context k3d-dev history podinfo -n podinfo`: a new revision |
-| Add `replicaCount: 3` under `values` | `kubectl --context k3d-dev get pods -n podinfo` |
-| `kubectl --context k3d-dev -n podinfo scale deploy podinfo --replicas 1` | It stays at 1: helm-controller only checks its own changes by default |
-| Add `driftDetection: {mode: enabled}` under `spec`, then scale again | Flux puts it back to 3 |
-| `flux --context k3d-dev suspend helmrelease podinfo -n flux-system`, change a value, re-apply | Nothing happens until `flux resume` |
-| Set `ref.tag` to `9.9.9` | `kubectl --context k3d-dev -n flux-system describe ocirepository podinfo`: the error, and the HelmRelease keeps the last good chart |
+<details>
+<summary>1. Change the message: a new Helm revision</summary>
+
+```yaml
+# scratch/02/podinfo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    tag: 6.7.1
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 5m
+  releaseName: podinfo
+  targetNamespace: podinfo
+  install:
+    createNamespace: true
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  values:
+    ui:
+      # ── new ──
+      message: first change
+      # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
+```
+
+```sh
+helm --kube-context k3d-dev history podinfo -n podinfo
+```
+
+Revision 2, made by helm-controller, not by you.
+
+</details>
+
+<details>
+<summary>2. Three replicas</summary>
+
+```yaml
+# scratch/02/podinfo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    tag: 6.7.1
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 5m
+  releaseName: podinfo
+  targetNamespace: podinfo
+  install:
+    createNamespace: true
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  values:
+    # ── new ──
+    replicaCount: 3
+    # ── end new ──
+    ui:
+      message: first change
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
+```
+
+```sh
+kubectl --context k3d-dev get pods -n podinfo
+```
+
+Three pods.
+
+</details>
+
+<details>
+<summary>3. Scale by hand: Flux doesn't notice</summary>
+
+No file change.
+
+```sh
+kubectl --context k3d-dev -n podinfo scale deploy podinfo --replicas 1
+kubectl --context k3d-dev get pods -n podinfo
+```
+
+It stays at 1: by default helm-controller only checks its own changes.
+
+</details>
+
+<details>
+<summary>4. Drift detection: Flux puts it back</summary>
+
+```yaml
+# scratch/02/podinfo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    tag: 6.7.1
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 5m
+  releaseName: podinfo
+  targetNamespace: podinfo
+  install:
+    createNamespace: true
+  # ── new ──
+  driftDetection:
+    mode: enabled
+  # ── end new ──
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  values:
+    replicaCount: 3
+    ui:
+      message: first change
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
+```
+
+```sh
+kubectl --context k3d-dev get pods -n podinfo
+kubectl --context k3d-dev -n podinfo scale deploy podinfo --replicas 1
+kubectl --context k3d-dev get pods -n podinfo -w
+```
+
+The apply alone brings it back to 3. Scale it down again and watch Flux undo it within the 5m interval. `ctrl-c` to stop watching.
+
+</details>
+
+<details>
+<summary>5. Suspend, change, resume</summary>
+
+```sh
+flux --context k3d-dev suspend helmrelease podinfo -n flux-system
+```
+
+```yaml
+# scratch/02/podinfo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    tag: 6.7.1
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 5m
+  releaseName: podinfo
+  targetNamespace: podinfo
+  install:
+    createNamespace: true
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  values:
+    replicaCount: 3
+    ui:
+      # ── new ──
+      message: while suspended
+      # ── end new ──
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
+```
+
+```sh
+helm --kube-context k3d-dev history podinfo -n podinfo
+```
+
+No new revision: the HelmRelease changed, but helm-controller is paused. Resume it:
+
+```sh
+flux --context k3d-dev resume helmrelease podinfo -n flux-system
+helm --kube-context k3d-dev history podinfo -n podinfo
+```
+
+A new revision appears within a few seconds of resuming.
+
+</details>
+
+<details>
+<summary>6. A tag that doesn't exist, then back</summary>
+
+```yaml
+# scratch/02/podinfo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    # ── new ──
+    tag: 9.9.9
+    # ── end new ──
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 5m
+  releaseName: podinfo
+  targetNamespace: podinfo
+  install:
+    createNamespace: true
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  values:
+    replicaCount: 3
+    ui:
+      message: while suspended
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
+```
+
+```sh
+kubectl --context k3d-dev -n flux-system describe ocirepository podinfo
+flux --context k3d-dev get helmreleases -n flux-system
+```
+
+The OCIRepository reports the missing tag; the HelmRelease keeps running the last good chart. Put `6.7.1` back:
+
+```yaml
+# scratch/02/podinfo.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    # ── new ──
+    tag: 6.7.1
+    # ── end new ──
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: flux-system
+spec:
+  interval: 5m
+  releaseName: podinfo
+  targetNamespace: podinfo
+  install:
+    createNamespace: true
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  values:
+    replicaCount: 3
+    ui:
+      message: while suspended
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
+flux --context k3d-dev reconcile source oci podinfo -n flux-system
+kubectl --context k3d-dev -n flux-system get ocirepository podinfo
+```
+
+`READY True` again.
+
+</details>
 
 sofka / k9s: `d` on the OCIRepository for its error. They differ on Helm and
 Flux actions:
@@ -179,8 +516,38 @@ uninstall the chart.
 Bootstrap installs the controllers again, but this time commits them to this
 repo and points them at it, so Flux manages itself from Git.
 
+### A token for bootstrap
+
+Bootstrap uses a GitHub token once: to add a deploy key to the repo and push
+its first commit. From then on Flux uses the deploy key, which it keeps in
+Secret `flux-system/flux-system`. The token isn't stored anywhere, so make a
+short-lived one now and let it expire.
+
+On GitHub: **Settings → Developer settings → Personal access tokens →
+Fine-grained tokens → Generate new token**.
+
+| Field | Value |
+| --- | --- |
+| Token name | `flux-bootstrap-k3d-dev` |
+| Expiration | 7 days |
+| Resource owner | `bourbonfgiles` |
+| Repository access | Only select repositories: `kube_local` |
+| Administration | Read and write: creates the deploy key |
+| Contents | Read and write: pushes `clusters/dev/flux-system/` |
+| Metadata | Read-only (GitHub adds it) |
+
+Copy the token. Read it into the shell without echoing it or leaving it in
+your history:
+
 ```sh
-export GITHUB_TOKEN=...
+read -rs 'GITHUB_TOKEN?GitHub token: ' && export GITHUB_TOKEN
+```
+
+You need a new one only if you bootstrap again, for example on a new cluster.
+
+### Bootstrap
+
+```sh
 flux bootstrap github --context k3d-dev \
   --owner bourbonfgiles --repository kube_local --personal --private=false \
   --branch master --path clusters/dev \
@@ -194,7 +561,16 @@ flux bootstrap github --context k3d-dev \
 | `--components-extra ...` | The image controllers for lesson 8. Adding them later means bootstrapping again. |
 | `--read-write-key` | The deploy key can push, also for lesson 8. A read-only key isn't upgraded in place. |
 
-Then `git pull`. Bootstrap committed `clusters/dev/flux-system/`:
+Then drop the token and fetch bootstrap's commit (in the repo root):
+
+```sh
+unset GITHUB_TOKEN
+git pull
+kubectl --context k3d-dev -n flux-system get secret flux-system
+```
+
+The Secret is the deploy key; the same key shows under the repo's
+**Settings → Deploy keys**. Bootstrap committed `clusters/dev/flux-system/`:
 
 - `gotk-components.yaml`: Flux itself.
 - `gotk-sync.yaml`: a `GitRepository` for this repo and a `Kustomization`
@@ -605,10 +981,19 @@ The ConfigMaps hold `cilium/values.yaml` and
 
 > [!WARNING]
 > Wrong Cilium values take the cluster network down, and with it Flux's
-> ability to fix them. If it goes wrong:
-> `flux --context k3d-dev suspend helmrelease cilium -n kube-system`, re-run
-> `overlays/local/bootstrap.sh`, fix the values, then
-> `flux --context k3d-dev resume helmrelease cilium -n kube-system`.
+> ability to fix them. If it goes wrong, from the repo root:
+>
+> ```sh
+> flux --context k3d-dev suspend helmrelease cilium -n kube-system
+> ./overlays/local/bootstrap.sh
+> ```
+>
+> Fix the values in Git and push, then hand Cilium back to Flux:
+>
+> ```sh
+> flux --context k3d-dev resume helmrelease cilium -n kube-system
+> kubectl --context k3d-dev get helmreleases -n kube-system -w
+> ```
 
 ## Where it gets hard
 

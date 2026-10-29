@@ -128,12 +128,144 @@ curl -s http://podinfo.kube.internal/ | jq .message
 
 ### 4. Iterate
 
-| Try | Then look at |
-| --- | --- |
-| `dig @10.89.0.250 -t TXT podinfo.kube.internal` | The ownership record, naming `k3d-dev` |
-| Add a second hostname to the route (Flux will revert it later; fine for now) | A new record within a minute |
-| Set `policy: upsert-only`, upgrade, remove the hostname | The record stays |
-| Remove `--rfc2136-axfr`, upgrade | Logs: it can't list the zone, so it can't reconcile deletes |
+The ownership record:
+
+```sh
+dig @10.89.0.250 -t TXT podinfo.kube.internal
+```
+
+The TXT record names `k3d-dev`.
+
+Then work through these in order. New or changed lines sit between
+`# ── new ──` and `# ── end new ──`.
+
+<details>
+<summary>1. A second hostname on the route</summary>
+
+Patch the route Flux applied in lesson 2. `apps-local` reverts it at its next
+interval, which is fine for now:
+
+```sh
+kubectl --context k3d-dev -n podinfo patch httproute podinfo --type merge \
+  -p '{"spec":{"hostnames":["podinfo.kube.internal","hello.kube.internal"]}}'
+dig +short @10.89.0.250 hello.kube.internal
+```
+
+A new record within a minute. Run the `dig` again until it answers.
+
+</details>
+
+<details>
+<summary>2. <code>policy: upsert-only</code>: records stay when routes go</summary>
+
+```yaml
+# scratch/03/values-base.yaml
+sources: [service, gateway-httproute, gateway-grpcroute]
+# ── new ──
+policy: upsert-only
+# ── end new ──
+registry: txt
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install external-dns external-dns \
+  --repo https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0 \
+  -n external-dns -f scratch/03/values-base.yaml -f scratch/03/values-local.yaml
+kubectl --context k3d-dev -n podinfo patch httproute podinfo --type merge \
+  -p '{"spec":{"hostnames":["podinfo.kube.internal"]}}'
+dig +short @10.89.0.250 hello.kube.internal
+```
+
+The record stays: upsert-only never deletes.
+
+Back to `sync`:
+
+```yaml
+# scratch/03/values-base.yaml
+sources: [service, gateway-httproute, gateway-grpcroute]
+# ── new ──
+policy: sync
+# ── end new ──
+registry: txt
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install external-dns external-dns \
+  --repo https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0 \
+  -n external-dns -f scratch/03/values-base.yaml -f scratch/03/values-local.yaml
+dig +short @10.89.0.250 hello.kube.internal
+```
+
+Within a minute, the record is gone.
+
+</details>
+
+<details>
+<summary>3. Without zone transfers</summary>
+
+The same file with the `--rfc2136-axfr` line removed:
+
+```yaml
+# scratch/03/values-local.yaml
+provider:
+  name: rfc2136
+txtOwnerId: k3d-dev
+domainFilters: [kube.internal]
+extraArgs:
+  - --rfc2136-host=bind.dns.svc.cluster.local.
+  - --rfc2136-port=53
+  - --rfc2136-zone=kube.internal
+  - --rfc2136-tsig-keyname=externaldns
+  - --rfc2136-tsig-secret-alg=hmac-sha256
+env:
+  - name: EXTERNAL_DNS_RFC2136_TSIG_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: externaldns-tsig
+        key: secret
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install external-dns external-dns \
+  --repo https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0 \
+  -n external-dns -f scratch/03/values-base.yaml -f scratch/03/values-local.yaml
+kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f
+```
+
+It can't list the zone, so it can't reconcile deletes.
+
+Put the line back:
+
+```yaml
+# scratch/03/values-local.yaml
+provider:
+  name: rfc2136
+txtOwnerId: k3d-dev
+domainFilters: [kube.internal]
+extraArgs:
+  - --rfc2136-host=bind.dns.svc.cluster.local.
+  - --rfc2136-port=53
+  - --rfc2136-zone=kube.internal
+  - --rfc2136-tsig-keyname=externaldns
+  - --rfc2136-tsig-secret-alg=hmac-sha256
+  # ── new ──
+  - --rfc2136-axfr
+  # ── end new ──
+env:
+  - name: EXTERNAL_DNS_RFC2136_TSIG_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: externaldns-tsig
+        key: secret
+```
+
+```sh
+helm --kube-context k3d-dev upgrade --install external-dns external-dns \
+  --repo https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0 \
+  -n external-dns -f scratch/03/values-base.yaml -f scratch/03/values-local.yaml
+```
+
+</details>
 
 ### 5. Clean up
 
@@ -284,8 +416,15 @@ spec:
 # ── end new ──
 ```
 
-Push, then
-`kubectl --context k3d-dev get helmreleases -n external-dns -w` until `Ready`.
+Commit, push, and watch it go `Ready`:
+
+```sh
+git add clusters/ infrastructure/
+git commit -m "ExternalDNS with Flux"
+git push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get helmreleases -n external-dns -w
+```
 
 sofka / k9s: `:helmreleases -n external-dns`
 
