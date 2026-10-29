@@ -76,28 +76,29 @@ plugins.
 
 ## Side by side
 
-| Do | kubectl | sofka | k9s |
+| Do, on lesson 2's podinfo | kubectl | sofka | k9s |
 | --- | --- | --- | --- |
 | List | `kubectl --context k3d-dev get pods -n podinfo` | `:pods -n podinfo` | `:pods -n podinfo` |
 | All namespaces | `-A` | `0` | `0` |
-| Switch namespace | `-n <ns>` | `n` | `:ns`, then `⏎` |
+| Switch namespace | `-n flux-system` | `n` | `:ns`, then `⏎` |
 | Custom resources | `kubectl --context k3d-dev get crds` | `:crds`, `⏎` on one | `:crds`, `⏎` on one |
-| Describe | `kubectl --context k3d-dev describe pod <name>` | `d` | `d` |
-| YAML | `kubectl --context k3d-dev get pod <name> -o yaml` | `y` | `y` |
-| Events for an object | `kubectl --context k3d-dev events --for pod/<name>` | `E` | `:events`, filter |
-| Logs, follow | `kubectl --context k3d-dev logs -f deploy/<name>` | `l` | `l` |
-| Previous container's logs | `kubectl --context k3d-dev logs -p <pod>` | `p` | `p` |
-| Shell | `kubectl --context k3d-dev exec -it <pod> -- sh` | `s` | `s` |
-| Port-forward | `kubectl --context k3d-dev port-forward svc/<name> 9090` | `f` or `Shift-f`, `:pf` to manage | `Shift-f`, `:pf` to manage |
-| Decode a Secret | `kubectl --context k3d-dev get secret <name> -o jsonpath=...` piped to `base64 -d` | `x` | `x` |
-| Owner | `kubectl --context k3d-dev get pod <name> -o jsonpath='{.metadata.ownerReferences}'` | `J` | `Shift-j` |
-| Restart a workload | `kubectl --context k3d-dev rollout restart deploy/<name>` | `r` | `r` |
+| Describe | `kubectl --context k3d-dev -n podinfo describe deploy podinfo` | `d` | `d` |
+| YAML | `kubectl --context k3d-dev -n podinfo get deploy podinfo -o yaml` | `y` | `y` |
+| Events for an object | `kubectl --context k3d-dev -n podinfo events --for deploy/podinfo` | `E` | `:events`, filter |
+| Logs, follow | `kubectl --context k3d-dev -n podinfo logs -f deploy/podinfo` | `l` | `l` |
+| Previous container's logs | `kubectl --context k3d-dev -n podinfo logs -p deploy/podinfo` | `p` | `p` |
+| Shell | `kubectl --context k3d-dev -n podinfo exec -it deploy/podinfo -- sh` | `s` | `s` |
+| Port-forward | `kubectl --context k3d-dev -n podinfo port-forward svc/podinfo 9898` | `f` or `Shift-f`, `:pf` to manage | `Shift-f`, `:pf` to manage |
+| Decode a Secret | `kubectl --context k3d-dev -n flux-system get secret flux-system -o jsonpath='{.data.identity\.pub}' \| base64 -d` | `x` | `x` |
+| Owner | `kubectl --context k3d-dev -n podinfo get pods -l app.kubernetes.io/name=podinfo -o jsonpath='{.items[*].metadata.ownerReferences[*].name}'` | `Shift-j` | `Shift-j` |
+| Restart a workload | `kubectl --context k3d-dev -n podinfo rollout restart deploy/podinfo` | `r` | `r` |
 | Only what's broken | | `ctrl-z` | `ctrl-z` |
-| Tree from a kind down to containers | | `:deploy -n <ns>`, then `:xray` | `:xray deploy <ns>` |
+| Tree from a kind down to containers | | `:deploy -n podinfo`, then `:xray` | `:xray deploy podinfo` |
 | Helm releases | `helm --kube-context k3d-dev list -A` | `:helm`, `⏎` for history | `:helm`, `r` for history |
-| Flux reconcile | `flux --context k3d-dev reconcile hr <name>` | `t` | `Shift-r` (plugin) |
-| Flux suspend / resume | `flux --context k3d-dev suspend hr <name>` | `t` | `Shift-t` (plugin) |
-| Where an object came from | `flux --context k3d-dev trace` | `:gitops` | `Shift-q` (plugin) |
+| Flux reconcile | `flux --context k3d-dev reconcile hr podinfo -n podinfo` | `t` | `Shift-r` (plugin) |
+| Flux suspend | `flux --context k3d-dev suspend hr podinfo -n podinfo` | `t` | `Shift-t` (plugin) |
+| Flux resume | `flux --context k3d-dev resume hr podinfo -n podinfo` | `t` | `Shift-t` (plugin) |
+| Where an object came from | `flux --context k3d-dev trace -n podinfo deployment podinfo` | `:gitops` | `Shift-q` (plugin) |
 
 Both TUIs list every key for the view you're in with `?`.
 
@@ -200,9 +201,79 @@ kubectl --context k3d-dev apply -f scratch/00/broken.yaml   # second terminal
 | Find what's broken | `kubectl --context k3d-dev get pods -n broken` | `ctrl-z` | `:pods -n broken`, `ctrl-z` |
 | `bad-tag`: why | `kubectl --context k3d-dev -n broken describe pod -l app=bad-tag`, read Events | `X` on the Deployment | `d` on the pod |
 | `crashloop`: what it said | `kubectl --context k3d-dev -n broken logs -p -l app=crashloop` | `X`, then `l` on the finding | `p` on the pod |
-| `too-big`: why | `kubectl --context k3d-dev events -n broken --for pod/<name>` | `X`: unschedulable, and the scheduler's message | `:events -n broken` |
+| `too-big`: why | `kubectl --context k3d-dev get events -n broken --field-selector reason=FailedScheduling` | `X`: unschedulable, and the scheduler's message | `:events -n broken` |
 | What happened, in order | `kubectl --context k3d-dev get events -n broken --sort-by=.lastTimestamp` | `T` on `crashloop`: each restart | `:events -n broken` |
-| Fix `bad-tag` to `6.7.1` and re-apply | `kubectl --context k3d-dev rollout history deploy/bad-tag -n broken` | `:rollout-history`, `⏎` on revision 1: the image line | `z` on the Deployment: its ReplicaSets |
+
+Then fix `bad-tag` and watch the rollout:
+
+<details>
+<summary>Fix <code>bad-tag</code> to <code>6.7.1</code></summary>
+
+```yaml
+# scratch/00/broken.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: broken
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-tag
+  namespace: broken
+spec:
+  selector: {matchLabels: {app: bad-tag}}
+  template:
+    metadata: {labels: {app: bad-tag}}
+    spec:
+      containers:
+        - name: podinfo
+          # ── new ──
+          image: ghcr.io/stefanprodan/podinfo:6.7.1
+          # ── end new ──
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crashloop
+  namespace: broken
+spec:
+  selector: {matchLabels: {app: crashloop}}
+  template:
+    metadata: {labels: {app: crashloop}}
+    spec:
+      containers:
+        - name: busybox
+          image: busybox:1.37
+          command: [sh, -c, "echo starting; sleep 2; echo oh no >&2; exit 1"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: too-big
+  namespace: broken
+spec:
+  selector: {matchLabels: {app: too-big}}
+  template:
+    metadata: {labels: {app: too-big}}
+    spec:
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.1
+          resources:
+            requests: {cpu: "64"}
+```
+
+```sh
+kubectl --context k3d-dev apply -f scratch/00/broken.yaml
+kubectl --context k3d-dev -n broken rollout status deploy/bad-tag
+kubectl --context k3d-dev -n broken rollout history deploy/bad-tag
+```
+
+Two revisions. sofka: `:rollout-history` on the Deployment, `⏎` on revision 1
+for the old image line. k9s: `z` on the Deployment for its ReplicaSets.
+
+</details>
 
 Clean up:
 

@@ -125,8 +125,8 @@ hubble observe -n otel-demo -f                    # terminal 2
 kubectl --context k3d-dev -n otel-demo logs deploy/payment -f
 ```
 
-sofka / k9s: `l` on `payment`. sofka extra: `J` lays out its JSON logs, and
-`ctrl-z` leaves only the errors.
+sofka / k9s: `l` on `payment`. sofka extra: in the logs view, `J` cycles the
+JSON lines through raw, record and pretty, and `ctrl-z` leaves only the errors.
 
 New or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
