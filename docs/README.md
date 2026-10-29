@@ -11,7 +11,7 @@ You write manifests and values, never application code.
 | **What it is** | The product: the problem it solves, how it works, the objects it adds. A diagram where it helps. |
 | **On EKS** | What you'd run there instead, and what changes. |
 | **Requirements** | What must already be in the cluster, and the tools you need on your machine. |
-| **Install by hand** | `helm` and `kubectl apply -f` against files in `scratch/`. Small YAML files you edit and re-apply to see what each field does. A **Where to look** table gives each check in kubectl, k9s and sofka. Cleaned up at the end. |
+| **Install by hand** | `helm` and `kubectl apply -f` against files in `scratch/`. Small YAML files you edit and re-apply to see what each field does. Each check is a kubectl command, then a `sofka / k9s:` line with the keys. Cleaned up at the end. |
 | **Install with Flux** | The same thing as files in the repo layout, committed and reconciled. |
 | **Exercises** | Easy first, hardest last. |
 | **Where it gets hard** | The failure modes, and how they show themselves. |
@@ -60,8 +60,8 @@ mistake:
 `cilium --context k3d-dev hubble port-forward` opens. `dig`, `curl`, `skopeo`,
 `sops` and `mkcert` don't talk to the Kubernetes API at all.
 
-A pod shell is `s` on the pod in k9s or sofka. Lesson 12 also works in a clone of the
-Karpenter repo; its blocks say so.
+A pod shell is `kubectl exec -it`, or `s` on the pod in sofka or k9s. Lesson
+12 also works in a clone of the Karpenter repo; its blocks say so.
 
 ## Tools on your machine
 
@@ -112,8 +112,8 @@ that mapping.
 
 Every object in these lessons has a view in both: `:` then the resource's
 plural name (`:gateways`, `:httproutes`, `:helmreleases`, `:certificates`).
-The lessons write k9s; the same keys work in sofka unless the table says
-otherwise. [Lesson 0](00-tools.md) has the full side by side, with kubectl.
+The lessons give the kubectl command first, then a `sofka / k9s:` line; the
+keys are the same in both unless that line splits them. [Lesson 0](00-tools.md) has the full side by side, with kubectl.
 
 | Does | k9s | sofka |
 | --- | --- | --- |
@@ -136,7 +136,8 @@ The `flux` CLI covers the rest: `flux diff`, `flux events`.
 - Once something is in Git, change it through Git. Flux reverts manual edits.
 - Pin every chart and image version. `helm search repo <repo>/<chart>` or
   `helm show chart <oci url>` gives the latest.
-- When something's stuck: `d` on it in k9s, or `X` in sofka, then
+- When something's stuck: `kubectl --context k3d-dev describe` it (`d`, or
+  sofka's `X`), then
   `flux --context k3d-dev events -A`. The repo README's Troubleshooting table
   covers the platform.
 
@@ -151,7 +152,7 @@ Each is one or two charts and a clear thing to learn.
 | GitOps | **Cluster upgrade drill**: bump k3s a minor in the dotfiles config, rebuild, let Flux restore everything. Then a Cilium minor. |
 | Security | **Tetragon**: Cilium's eBPF runtime security. Trace process execs and file access in pods. |
 | Security | **Kyverno**: policies such as "images only from the local registry", in audit then enforce mode. |
-| Security | **Trivy Operator**: vulnerability and config reports as CRDs you can browse in k9s. |
+| Security | **Trivy Operator**: vulnerability and config reports as CRDs you can browse in sofka or k9s. |
 | Security | **Network policy hardening**: default-deny a namespace, then allow only what Hubble shows is needed. |
 | AWS stand-ins | **MinIO** as S3, then **Velero** backing up namespaces to it and restoring into a rebuilt cluster. |
 | AWS stand-ins | **CloudNativePG** as RDS: a Postgres cluster, failover, backups to MinIO. |

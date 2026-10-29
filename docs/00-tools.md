@@ -24,8 +24,9 @@ flowchart LR
 
 k9s and sofka share most of their keys and the `:` command syntax, so
 `:pods -n podinfo`, `d`, `l`, `s`, `y`, `x` and `Shift-f` do the same thing in
-both. The lessons write k9s; this page says where sofka differs or goes
-further.
+both. The lessons are kubectl-first: each check is the kubectl command, then
+one `sofka / k9s:` line with the keys, split only where the two differ. This
+page has the full side by side, and what sofka does beyond k9s.
 
 ### Which tool when
 
