@@ -249,15 +249,102 @@ instead.
 | KWOKNodeClass, NodePool | `default` | `infrastructure/local-config/karpenter/nodepool.yaml` |
 | KWOK controller, image | | Stay by hand: steps 2 and 3 after a rebuild |
 
-1. The chart comes from Git, not a chart repository: a `GitRepository` with
-   `url: https://github.com/kubernetes-sigs/karpenter` and `ref.tag: <tag>`,
-   and a HelmRelease with
-   `chart.spec: {chart: ./kwok/charts, sourceRef: {kind: GitRepository, name: karpenter}}`.
-   Flux installs the chart's `crds/` itself.
-2. The values ConfigMap holds `karpenter-values.yaml`.
-3. The NodePool needs Karpenter's CRDs, so it goes in `infra-local-config`
-   (lesson 4).
-4. `inflate` stays in `scratch/`: it's a test load, not something to keep.
+1. The chart comes from Git, not a chart repository, at the tag from step 1.
+   Flux installs the chart's `crds/` itself. The values ConfigMap holds
+   `karpenter-values.yaml` unchanged.
+   <details>
+   <summary>Karpenter as Flux files</summary>
+
+   ```yaml
+   # infrastructure/local/karpenter/source.yaml
+   apiVersion: source.toolkit.fluxcd.io/v1
+   kind: GitRepository
+   metadata:
+     name: karpenter
+     namespace: kube-system
+   spec:
+     interval: 1h
+     url: https://github.com/kubernetes-sigs/karpenter
+     ref:
+       tag: <tag from step 1>
+   ---
+   # infrastructure/local/karpenter/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: karpenter
+     namespace: kube-system
+   spec:
+     interval: 10m
+     chart:
+       spec:
+         chart: ./kwok/charts
+         sourceRef:
+           kind: GitRepository
+           name: karpenter
+     valuesFrom:
+       - kind: ConfigMap
+         name: karpenter-values-local
+   ---
+   # infrastructure/local/karpenter/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: karpenter-values-local
+     namespace: kube-system
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       logLevel: debug
+       settings:
+         preferencePolicy: Ignore
+         featureGates:
+           nodeRepair: true
+           capacityBuffer: true
+           staticCapacity: true
+       controller:
+         image:
+           repository: k3d-registry.localhost:5000/karpenter/kwok   # the name pods pull by
+           tag: <tag from step 3>
+           digest: <sha256 from step 3>
+         resources:
+           requests: {cpu: 500m, memory: 512Mi}
+           limits: {memory: 1Gi}
+   ```
+
+   </details>
+2. The NodePool needs Karpenter's CRDs, so it goes in `infra-local-config`
+   (lesson 4), unchanged from `scratch/12/`:
+   ```yaml
+   # infrastructure/local-config/karpenter/nodepool.yaml
+   apiVersion: karpenter.kwok.sh/v1alpha1
+   kind: KWOKNodeClass
+   metadata:
+     name: default
+   ---
+   apiVersion: karpenter.sh/v1
+   kind: NodePool
+   metadata:
+     name: default
+   spec:
+     template:
+       spec:
+         nodeClassRef:
+           group: karpenter.kwok.sh
+           kind: KWOKNodeClass
+           name: default
+         taints:
+           - key: kwok
+             effect: NoSchedule
+         requirements:
+           - key: kubernetes.io/arch
+             operator: In
+             values: [amd64]
+     limits:
+       cpu: 64
+   ```
+3. `inflate` stays in `scratch/`: it's a test load, not something to keep.
 
 ## Exercises
 

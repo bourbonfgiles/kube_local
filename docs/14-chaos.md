@@ -182,10 +182,81 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
 | Kustomization | `flux-system/chaos` | `clusters/dev/chaos.yaml` |
 | Namespace, Schedules | `chaos` | `chaos/*.yaml` |
 
-1. **The chart.** HelmRelease `chart: chaos-mesh`, `version: 2.8.5`,
-   `valuesFrom` only the local ConfigMap, holding
-   `scratch/14/values-local.yaml`. Route: `chaos.kube.internal` to Service
-   `chaos-dashboard` port 2333.
+1. **The chart.** The HelmRelease reads only the local ConfigMap, which holds
+   `scratch/14/values-local.yaml` unchanged.
+   <details>
+   <summary>Chaos Mesh as Flux files</summary>
+
+   ```yaml
+   # infrastructure/base/chaos-mesh/namespace.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: chaos-mesh
+   ---
+   # infrastructure/base/chaos-mesh/source.yaml
+   apiVersion: source.toolkit.fluxcd.io/v1
+   kind: HelmRepository
+   metadata:
+     name: chaos-mesh
+     namespace: chaos-mesh
+   spec:
+     interval: 1h
+     url: https://charts.chaos-mesh.org
+   ---
+   # infrastructure/base/chaos-mesh/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: chaos-mesh
+     namespace: chaos-mesh
+   spec:
+     interval: 10m
+     chart:
+       spec:
+         chart: chaos-mesh
+         version: 2.8.5
+         sourceRef:
+           kind: HelmRepository
+           name: chaos-mesh
+     valuesFrom:
+       - kind: ConfigMap
+         name: chaos-mesh-values-local
+   ---
+   # infrastructure/local/chaos-mesh/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: chaos-mesh-values-local
+     namespace: chaos-mesh
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       chaosDaemon:
+         runtime: containerd
+         socketPath: /run/k3s/containerd/containerd.sock   # k3s's, not the default
+       dashboard:
+         securityMode: false   # no login; local only
+   ---
+   # infrastructure/local/chaos-mesh/route.yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: HTTPRoute
+   metadata:
+     name: dashboard
+     namespace: chaos-mesh
+   spec:
+     parentRefs:
+       - name: web
+         namespace: gateway
+     hostnames: [chaos.kube.internal]
+     rules:
+       - backendRefs:
+           - name: chaos-dashboard
+             port: 2333
+   ```
+
+   </details>
 2. **The switch.** Experiments get their own folder and Kustomization, so one
    variable reaches all of them, and so they apply only after the CRDs exist:
    ```yaml
@@ -232,9 +303,38 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
        selector:
          namespaces: [otel-demo]
    ```
-   Plus `chaos/namespace.yaml` for `chaos`, and `chaos/latency.yaml`: the
-   NetworkChaos from above as `type: NetworkChaos` with
-   `schedule: "@every 15m"`.
+   Plus the namespace, and the latency experiment from above on a schedule:
+   ```yaml
+   # chaos/namespace.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: chaos
+   ---
+   # chaos/latency.yaml
+   apiVersion: chaos-mesh.org/v1alpha1
+   kind: Schedule
+   metadata:
+     name: cart-latency
+     namespace: chaos
+     annotations:
+       experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+   spec:
+     schedule: "@every 15m"
+     type: NetworkChaos
+     historyLimit: 5
+     concurrencyPolicy: Forbid
+     networkChaos:
+       action: delay
+       mode: all
+       selector:
+         namespaces: [otel-demo]
+         labelSelectors:
+           app.kubernetes.io/component: cart
+       delay:
+         latency: 200ms
+       duration: 2m
+   ```
 4. Push. `kubectl --context k3d-dev get schedules -n chaos` shows them, paused.
    sofka / k9s: `:schedules -n chaos`.
 

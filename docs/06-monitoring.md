@@ -170,45 +170,204 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
 | ConfigMap, changed | `kube-system/cilium-values-base` | `infrastructure/base/cilium/values.yaml` |
 | HelmRelease, changed | `kube-system/cilium` | `infrastructure/base/cilium/release.yaml` |
 
-1. HelmRepository `url: https://prometheus-community.github.io/helm-charts`.
-   Both HelmReleases use it with `chart.spec`, versions as above.
-   `kube-prometheus-stack` has `dependsOn: [{name: prometheus-operator-crds}]`
-   and `valuesFrom` base then local, holding the two scratch files.
-2. Grafana's route: `grafana.kube.internal` to Service
-   `kube-prometheus-stack-grafana` port 80.
-3. Cilium's metrics. Add to `cilium-values-base`, merging into the existing
-   `hubble:` key (you'd want these on EKS too):
+1. One HelmRepository for both charts. The stack waits for the CRDs release,
+   and its ConfigMaps hold the two scratch files unchanged.
+   <details>
+   <summary>The stack as Flux files</summary>
+
    ```yaml
-   prometheus:
-     enabled: true
-     serviceMonitor:
-       enabled: true
-   operator:
-     prometheus:
-       enabled: true
-       serviceMonitor:
+   # infrastructure/base/monitoring/namespace.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: monitoring
+   ---
+   # infrastructure/base/monitoring/source.yaml
+   apiVersion: source.toolkit.fluxcd.io/v1
+   kind: HelmRepository
+   metadata:
+     name: prometheus-community
+     namespace: monitoring
+   spec:
+     interval: 1h
+     url: https://prometheus-community.github.io/helm-charts
+   ---
+   # infrastructure/base/monitoring/crds.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: prometheus-operator-crds
+     namespace: monitoring
+   spec:
+     interval: 10m
+     chart:
+       spec:
+         chart: prometheus-operator-crds
+         version: 32.0.1
+         sourceRef:
+           kind: HelmRepository
+           name: prometheus-community
+   ---
+   # infrastructure/base/monitoring/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: kube-prometheus-stack
+     namespace: monitoring
+   spec:
+     interval: 10m
+     dependsOn:
+       - name: prometheus-operator-crds
+     chart:
+       spec:
+         chart: kube-prometheus-stack
+         version: 92.10.1
+         sourceRef:
+           kind: HelmRepository
+           name: prometheus-community
+     valuesFrom:
+       - kind: ConfigMap
+         name: kube-prometheus-stack-values-base
+       - kind: ConfigMap
+         name: kube-prometheus-stack-values-local
+   ---
+   # infrastructure/base/monitoring/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: kube-prometheus-stack-values-base
+     namespace: monitoring
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       crds:
+         enabled: false        # the other release owns them
+       prometheus:
+         prometheusSpec:
+           serviceMonitorSelectorNilUsesHelmValues: false
+           podMonitorSelectorNilUsesHelmValues: false
+   ---
+   # infrastructure/local/monitoring/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: kube-prometheus-stack-values-local
+     namespace: monitoring
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       kubeProxy:
+         enabled: false        # there's no kube-proxy
+       kubeEtcd:
+         enabled: false        # k3s runs these in one process bound to localhost,
+       kubeControllerManager:  # so their targets would only ever show as down
+         enabled: false
+       kubeScheduler:
+         enabled: false
+   ```
+
+   </details>
+2. Grafana's route:
+   ```yaml
+   # infrastructure/local/monitoring/route.yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: HTTPRoute
+   metadata:
+     name: grafana
+     namespace: monitoring
+   spec:
+     parentRefs:
+       - name: web
+         namespace: gateway
+     hostnames: [grafana.kube.internal]
+     rules:
+       - backendRefs:
+           - name: kube-prometheus-stack-grafana
+             port: 80
+   ```
+3. Cilium's metrics, in `cilium-values-base` (you'd want these on EKS too):
+   ```yaml
+   # infrastructure/base/cilium/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: cilium-values-base
+     namespace: kube-system
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       kubeProxyReplacement: true
+
+       hubble:
          enabled: true
-   hubble:
-     metrics:
-       enabled:
-         - dns
-         - drop
-         - tcp
-         - flow
-         - "httpV2:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
-       serviceMonitor:
+         relay:
+           enabled: true
+         ui:
+           enabled: true
+         # ── new ──
+         metrics:
+           enabled:
+             - dns
+             - drop
+             - tcp
+             - flow
+             - "httpV2:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+           serviceMonitor:
+             enabled: true
+         # ── end new ──
+
+       bpf:
+         monitorAggregation: none
+
+       gatewayAPI:
          enabled: true
+
+       # ── new ──
+       prometheus:
+         enabled: true
+         serviceMonitor:
+           enabled: true
+       operator:
+         prometheus:
+           enabled: true
+           serviceMonitor:
+             enabled: true
+       # ── end new ──
    ```
    `labelsContext` adds who-talked-to-whom labels to the HTTP metrics; lesson
-   9's canary checks need them.
-   And make Cilium wait for the CRDs, in its `release.yaml`:
+   9's canary checks need them. `cilium/values.yaml` gets the same new lines,
+   so `bootstrap.sh` stays in step (lesson 2).
+   And make Cilium wait for the CRDs:
    ```yaml
+   # infrastructure/base/cilium/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: cilium
+     namespace: kube-system
    spec:
+     interval: 10m
+     chart:
+       spec:
+         chart: cilium
+         version: 1.20.3
+         sourceRef:
+           kind: HelmRepository
+           name: cilium
+     # ── new ──
      dependsOn:
        - name: prometheus-operator-crds
          namespace: monitoring
+     # ── end new ──
+     valuesFrom:
+       - kind: ConfigMap
+         name: cilium-values-base
+       - kind: ConfigMap
+         name: cilium-values-local
    ```
-   Keep `cilium/values.yaml` matching (lesson 2).
 4. Push. `kubectl --context k3d-dev get helmreleases -A` until all are
    `Ready`, and the targets page lists `cilium-agent`, `cilium-operator` and
    `hubble`, all `UP`. sofka / k9s: `ctrl-z` on `:helmreleases -A` leaves only

@@ -159,6 +159,12 @@ This chart comes from a classic Helm repository, so the release uses
 `OCIRepository`:
 
 ```yaml
+# infrastructure/base/external-dns/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-dns
+---
 # infrastructure/base/external-dns/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -210,10 +216,75 @@ data:
     registry: txt
 ```
 
-`infrastructure/local/external-dns/values.yaml` is the same shape, named
-`external-dns-values-local`. This is the first file under
-`infrastructure/local/`, so add the `infra-local` Kustomization to
-`clusters/dev/infrastructure.yaml` (lesson 2) in the same commit. Push, then
+```yaml
+# infrastructure/local/external-dns/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: external-dns-values-local
+  namespace: external-dns
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    provider:
+      name: rfc2136
+    txtOwnerId: k3d-dev
+    domainFilters: [kube.internal]
+    extraArgs:
+      - --rfc2136-host=bind.dns.svc.cluster.local.
+      - --rfc2136-port=53
+      - --rfc2136-zone=kube.internal
+      - --rfc2136-tsig-keyname=externaldns
+      - --rfc2136-tsig-secret-alg=hmac-sha256
+      - --rfc2136-axfr
+    env:
+      - name: EXTERNAL_DNS_RFC2136_TSIG_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: externaldns-tsig
+            key: secret
+```
+
+If you didn't adopt Cilium in lesson 2, this is the first file under
+`infrastructure/local/`, so `infra-local` goes in the same commit:
+
+```yaml
+# clusters/dev/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/base
+  prune: true
+# ── new ──
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-local
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  dependsOn:
+    - name: infra-base
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/local
+  prune: true
+# ── end new ──
+```
+
+Push, then
 `kubectl --context k3d-dev get helmreleases -n external-dns -w` until `Ready`.
 
 sofka / k9s: `:helmreleases -n external-dns`

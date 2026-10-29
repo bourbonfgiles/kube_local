@@ -182,6 +182,29 @@ spec:
 And in the Canary's `analysis`:
 
 ```yaml
+# scratch/09/canary.yaml
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: canary-demo
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  service:
+    port: 9898
+    hosts: [canary.kube.internal]
+    gatewayRefs:
+      - name: web
+        namespace: gateway
+  analysis:
+    interval: 30s
+    threshold: 3
+    stepWeight: 10
+    maxWeight: 50
+    # ── new ──
     metrics:
       - name: error-rate
         templateRef:
@@ -189,6 +212,12 @@ And in the Canary's `analysis`:
         thresholdRange:
           max: 1
         interval: 1m
+    # ── end new ──
+    webhooks:
+      - name: load
+        url: http://loadtester.canary-demo/
+        metadata:
+          cmd: "hey -z 1m -q 10 -c 2 -host canary.kube.internal http://cilium-gateway-web.gateway/"
 ```
 
 `destination_workload` and `destination_namespace` only exist with the
@@ -236,26 +265,192 @@ Now for the real podinfo, so lesson 8's commits become canaries.
 | MetricTemplate | `podinfo/error-rate` | `apps/base/podinfo/metric-template.yaml` |
 | Canary | `podinfo/podinfo` | `apps/local/podinfo/canary.yaml` (names the local hostname) |
 | HTTPRoute, deleted | `podinfo/podinfo` | `apps/local/podinfo/route.yaml`: Flagger owns the route now |
-| ConfigMap, changed | `podinfo-values-base` | `service.enabled: false` |
+| ConfigMap, changed | `podinfo-values-base` | `apps/base/podinfo/values.yaml`: `service.enabled: false` |
 
-1. Flagger's values ConfigMap holds `scratch/09/flagger-values.yaml`.
-2. The loadtester HelmRelease's `chart.spec.sourceRef` names the
-   HelmRepository in another namespace: `{kind: HelmRepository, name:
-   flagger, namespace: flagger-system}`.
-3. The Canary is `scratch/09/canary.yaml` with namespace `podinfo`, host
-   `podinfo.kube.internal`, the loadtester URL `http://loadtester.podinfo/`,
-   and `-host podinfo.kube.internal` in its `cmd`. The MetricTemplate's query
-   names namespace `podinfo`.
-4. If podinfo's HelmRelease has drift detection on, stop it fighting Flagger
-   over replicas:
+1. **Flagger.** Its values ConfigMap holds `scratch/09/flagger-values.yaml`
+   unchanged.
+   <details>
+   <summary>Flagger as Flux files</summary>
+
    ```yaml
+   # infrastructure/base/flagger/namespace.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: flagger-system
+   ---
+   # infrastructure/base/flagger/source.yaml
+   apiVersion: source.toolkit.fluxcd.io/v1
+   kind: HelmRepository
+   metadata:
+     name: flagger
+     namespace: flagger-system
    spec:
+     interval: 1h
+     url: https://flagger.app
+   ---
+   # infrastructure/base/flagger/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: flagger
+     namespace: flagger-system
+   spec:
+     interval: 10m
+     chart:
+       spec:
+         chart: flagger
+         version: 1.45.0
+         sourceRef:
+           kind: HelmRepository
+           name: flagger
+     valuesFrom:
+       - kind: ConfigMap
+         name: flagger-values-base
+   ---
+   # infrastructure/base/flagger/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: flagger-values-base
+     namespace: flagger-system
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       meshProvider: gatewayapi:v1
+       prometheus:
+         install: false
+       metricsServer: http://kube-prometheus-stack-prometheus.monitoring:9090
+   ```
+
+   </details>
+2. **podinfo's side.** The loadtester's `sourceRef` names the HelmRepository
+   in Flagger's namespace. The MetricTemplate and Canary are the scratch ones
+   moved to namespace `podinfo` and host `podinfo.kube.internal`.
+   <details>
+   <summary>podinfo's canary files</summary>
+
+   ```yaml
+   # apps/base/podinfo/loadtester.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: loadtester
+     namespace: podinfo
+   spec:
+     interval: 10m
+     chart:
+       spec:
+         chart: loadtester
+         version: 0.39.0
+         sourceRef:
+           kind: HelmRepository
+           name: flagger
+           namespace: flagger-system
+   ---
+   # apps/base/podinfo/metric-template.yaml
+   apiVersion: flagger.app/v1beta1
+   kind: MetricTemplate
+   metadata:
+     name: error-rate
+     namespace: podinfo
+   spec:
+     provider:
+       type: prometheus
+       address: http://kube-prometheus-stack-prometheus.monitoring:9090
+     query: |
+       100 * sum(rate(hubble_http_requests_total{destination_namespace="podinfo",destination_workload="podinfo",status=~"5.."}[1m]))
+         /
+       sum(rate(hubble_http_requests_total{destination_namespace="podinfo",destination_workload="podinfo"}[1m]))
+   ---
+   # apps/local/podinfo/canary.yaml
+   apiVersion: flagger.app/v1beta1
+   kind: Canary
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     targetRef:
+       apiVersion: apps/v1
+       kind: Deployment
+       name: podinfo
+     service:
+       port: 9898
+       hosts: [podinfo.kube.internal]
+       gatewayRefs:
+         - name: web
+           namespace: gateway
+     analysis:
+       interval: 30s
+       threshold: 3
+       stepWeight: 10
+       maxWeight: 50
+       metrics:
+         - name: error-rate
+           templateRef:
+             name: error-rate
+           thresholdRange:
+             max: 1
+           interval: 1m
+       webhooks:
+         - name: load
+           url: http://loadtester.podinfo/
+           metadata:
+             cmd: "hey -z 1m -q 10 -c 2 -host podinfo.kube.internal http://cilium-gateway-web.gateway/"
+   ---
+   # apps/base/podinfo/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: podinfo-values-base
+     namespace: podinfo
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       replicaCount: 2
+       # ── new ──
+       service:
+         enabled: false
+       # ── end new ──
+   ```
+
+   </details>
+
+   And `git rm apps/local/podinfo/route.yaml`: Flagger owns the route now.
+3. **Check the query** in Prometheus before pushing: it names namespace
+   `podinfo` now.
+4. If you turned on drift detection for podinfo (lesson 2's exercises), stop
+   it fighting Flagger over replicas:
+   ```yaml
+   # apps/base/podinfo/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     interval: 10m
+     chartRef:
+       kind: OCIRepository
+       name: podinfo
      driftDetection:
        mode: enabled
+       # ── new ──
        ignore:
          - paths: ["/spec/replicas"]
            target:
              kind: Deployment
+       # ── end new ──
+     valuesFrom:
+       - kind: ConfigMap
+         name: podinfo-values-base
+       - kind: ConfigMap
+         name: podinfo-values-local
+     values:
+       image:
+         tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
    ```
 5. Push Flagger first and wait for it to be `Ready`: the Canary and
    MetricTemplate kinds come from its chart.
