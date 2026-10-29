@@ -58,7 +58,7 @@ below mirrors.
   then rerun lesson 2's bootstrap command with both flags.
 - podinfo `6.7.0` running from the local registry (lesson 7).
 
-**On your machine**: `skopeo`, `flux`, `kubectl`, `git`, `k9s`.
+**On your machine**: `skopeo`, `flux`, `kubectl`, `git`, `k9s`, `sofka`.
 
 ## Install by hand
 
@@ -114,6 +114,16 @@ skopeo copy --all --dest-tls-verify=false \
   docker://ghcr.io/stefanprodan/podinfo:6.7.1 \
   docker://localhost:5050/podinfo:6.8.0-rc.1
 ```
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| Image controllers | `kubectl --context k3d-dev get deploy -n flux-system` | `:deploy -n flux-system` | `:deploy -n flux-system` |
+| Tags found | `flux --context k3d-dev get images all -n flux-system` | `:imagerepositories -n flux-system`, `d` | `:imagerepositories -n flux-system`, `d` |
+| Tag picked | `kubectl --context k3d-dev get imagepolicies -n flux-system` | `:imagepolicies -n flux-system` | `:imagepolicies -n flux-system` |
+| Scan now | `flux --context k3d-dev reconcile image repository podinfo-test -n flux-system` | `Shift-r` (plugin) | `t` |
+| The rollout after Flux's commit (Flux part) | `kubectl --context k3d-dev -n podinfo rollout status deploy/podinfo` | `:pods -n podinfo` | `:rollout-history` on the Deployment: one revision per commit |
 
 ### Clean up
 

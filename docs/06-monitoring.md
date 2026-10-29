@@ -50,7 +50,7 @@ exposes.
 Cilium's metrics are turned on through its values. Roughly 2 GB of spare
 memory.
 
-**On your machine**: `kubectl`, `helm`, `flux`, `k9s`, `hubble`.
+**On your machine**: `kubectl`, `helm`, `flux`, `k9s`, `sofka`, `hubble`.
 
 ## Install by hand
 
@@ -132,6 +132,17 @@ Within a minute `podinfo` is on the targets page. In Prometheus, query
 | Change `matchLabels` to a label podinfo doesn't have | The target disappears; nothing errors |
 | Set `serviceMonitorSelectorNilUsesHelmValues: true`, upgrade | Your ServiceMonitor is ignored: Prometheus only picks up the chart's own |
 | `interval: 5s` | Smoother graphs, more samples |
+
+**Where to look**
+
+| Check | kubectl | k9s | sofka |
+| --- | --- | --- | --- |
+| Prometheus | `kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090` | `:svc -n monitoring`, `Shift-f` | `:svc -n monitoring`, `f`, pick 9090 |
+| Grafana | `kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80` | `Shift-f`, port 80 | `f`, port 80 |
+| Grafana's password | `kubectl --context k3d-dev -n monitoring get secret kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' \| base64 -d` | `:secrets -n monitoring`, `x` | `:secrets -n monitoring`, `x` |
+| Forwards running | The terminals running `port-forward` | `:pf` | `:pf` |
+| Your ServiceMonitor | `kubectl --context k3d-dev get servicemonitors -A` | `:servicemonitors -A` | `:servicemonitors -A` |
+| Releases (Flux part) | `kubectl --context k3d-dev get helmreleases -A` | `:helmreleases -A`, `ctrl-z` | `:helmreleases -A`, `ctrl-z` |
 
 ### 5. Clean up
 
@@ -215,7 +226,8 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
 - Without the selector settings, Prometheus only scrapes the chart's own
   ServiceMonitors, and every other chart's are silently ignored.
 - Cilium's chart refuses to render ServiceMonitors until their CRD exists.
-  That's what its `dependsOn` is for.
+  That's what its `dependsOn` is for. sofka's `:gitops` on the `cilium`
+  HelmRelease shows the edge and whether it's met.
 - HTTP metrics (`httpV2`) only exist for traffic Cilium parses at L7: traffic
   through the Gateway, or pods with an L7 CiliumNetworkPolicy.
 - Upgrading `prometheus-operator-crds` across a major version can need manual
