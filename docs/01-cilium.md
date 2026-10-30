@@ -100,7 +100,7 @@ hubble observe -f                                 # terminal 2
 
 ## Install by hand
 
-Everything here lives in `scratch/01/`. The Gateway files are reused in
+Everything here lives in `~/repos/personal/scratch/01/`. The Gateway files are reused in
 lesson 2.
 
 ### 1. Two backends
@@ -125,9 +125,9 @@ sofka / k9s: `:svc -n demo`
 
 ### 2. A Gateway
 
-**Write `scratch/01/gateway.yaml`**
+**Write `~/repos/personal/scratch/01/gateway.yaml`**
 ```yaml
-# scratch/01/gateway.yaml
+# ~/repos/personal/scratch/01/gateway.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -150,7 +150,7 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/01/gateway.yaml
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/01/gateway.yaml
 kubectl --context k3d-dev get gateways -A -w
 ```
 
@@ -164,9 +164,9 @@ sofka / k9s: `:gateways -A`, then `:svc -n gateway`
 
 Start with everything to `blue`:
 
-**Write `scratch/01/route.yaml`**
+**Write `~/repos/personal/scratch/01/route.yaml`**
 ```yaml
-# scratch/01/route.yaml
+# ~/repos/personal/scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -184,19 +184,19 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/01/route.yaml
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/01/route.yaml
 curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/ | jq .message
 ```
 
-Then change `scratch/01/route.yaml` in three steps, each building on the last.
+Then change `~/repos/personal/scratch/01/route.yaml` in three steps, each building on the last.
 Re-apply after each, and predict the answer before you `curl`. New lines sit
 between `# ── new ──` and `# ── end new ──`.
 
 #### 1. Path: `/green` to green, rewritten to `/`
 
-**Replace `scratch/01/route.yaml`**
+**Replace `~/repos/personal/scratch/01/route.yaml`**
 ```yaml
-# scratch/01/route.yaml
+# ~/repos/personal/scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -229,7 +229,7 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/01/route.yaml
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/01/route.yaml
 curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/green | jq .message
 ```
 
@@ -237,9 +237,9 @@ Without the filter, podinfo gets `/green`, which it doesn't serve.
 
 #### 2. Header: `x-colour: green` to green
 
-**Replace `scratch/01/route.yaml`**
+**Replace `~/repos/personal/scratch/01/route.yaml`**
 ```yaml
-# scratch/01/route.yaml
+# ~/repos/personal/scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -279,15 +279,15 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/01/route.yaml
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/01/route.yaml
 curl -s -H 'Host: demo.kube.internal' -H 'x-colour: green' http://10.89.0.200/ | jq .message
 ```
 
 #### 3. Weights: 90/10 split on the catch-all
 
-**Replace `scratch/01/route.yaml`**
+**Replace `~/repos/personal/scratch/01/route.yaml`**
 ```yaml
-# scratch/01/route.yaml
+# ~/repos/personal/scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -331,7 +331,7 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/01/route.yaml
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/01/route.yaml
 for i in $(seq 50); do
   curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/ | jq -r .message
 done | sort | uniq -c
@@ -354,12 +354,12 @@ sofka also lists the matched paths in its `ROUTES` column.
 ### 4. Clean up
 
 ```sh
-kubectl --context k3d-dev delete -f scratch/01/route.yaml -f scratch/01/gateway.yaml
+kubectl --context k3d-dev delete -f ~/repos/personal/scratch/01/route.yaml -f ~/repos/personal/scratch/01/gateway.yaml
 helm --kube-context k3d-dev uninstall -n demo blue green
 kubectl --context k3d-dev delete namespace demo
 ```
 
-Keep `scratch/01/gateway.yaml`: it becomes Flux's first object in lesson 2.
+Keep `~/repos/personal/scratch/01/gateway.yaml`: it becomes Flux's first object in lesson 2.
 
 ## Install with Flux
 

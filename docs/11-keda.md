@@ -62,31 +62,31 @@ kubectl --context k3d-dev apply -f scaledobject.yaml
 
 | Kind | Name | File |
 | --- | --- | --- |
-| Namespace | `keda` | `infrastructure/base/keda/namespace.yaml` |
-| HelmRepository | `kedacore` | `infrastructure/base/keda/source.yaml` |
-| HelmRelease | `keda` | `infrastructure/base/keda/release.yaml` |
-| ScaledObject | `otel-demo/accounting` | `apps/base/otel-demo/scaledobject.yaml` |
+| Namespace | `keda` | `~/repos/personal/kube_local/infrastructure/base/keda/namespace.yaml` |
+| HelmRepository | `kedacore` | `~/repos/personal/kube_local/infrastructure/base/keda/source.yaml` |
+| HelmRelease | `keda` | `~/repos/personal/kube_local/infrastructure/base/keda/release.yaml` |
+| ScaledObject | `otel-demo/accounting` | `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml` |
 
 No values ConfigMaps: KEDA's defaults are fine.
 
 ### 1. KEDA
 
 ```sh
-mkdir -p infrastructure/base/keda
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/keda
 ```
 
-**Write `infrastructure/base/keda/namespace.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/keda/namespace.yaml`**
 ```yaml
-# infrastructure/base/keda/namespace.yaml
+# ~/repos/personal/kube_local/infrastructure/base/keda/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: keda
 ```
 
-**Write `infrastructure/base/keda/source.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/keda/source.yaml`**
 ```yaml
-# infrastructure/base/keda/source.yaml
+# ~/repos/personal/kube_local/infrastructure/base/keda/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -97,9 +97,9 @@ spec:
   url: https://kedacore.github.io/charts
 ```
 
-**Write `infrastructure/base/keda/release.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/keda/release.yaml`**
 ```yaml
-# infrastructure/base/keda/release.yaml
+# ~/repos/personal/kube_local/infrastructure/base/keda/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -120,10 +120,10 @@ Push it first: `apps-base` can't apply a ScaledObject until KEDA's CRDs
 exist, and nothing else in `apps-base` applies meanwhile.
 
 ```sh
-git pull
-git add infrastructure/
-git commit -m "KEDA with Flux"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local commit -m "KEDA with Flux"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 kubectl --context k3d-dev get helmreleases -n keda -w
 ```
@@ -145,9 +145,9 @@ sofka / k9s: `:pods -n otel-demo`, `s` on `kafka`.
 
 ### 3. The ScaledObject
 
-**Write `apps/base/otel-demo/scaledobject.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# apps/base/otel-demo/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -169,10 +169,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/base/otel-demo/scaledobject.yaml
-git commit -m "Scale accounting on Kafka lag"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "Scale accounting on Kafka lag"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev get scaledobjects,hpa -n otel-demo
 ```
@@ -205,9 +205,9 @@ changed lines sit between `# ── new ──` and `# ── end new ──`.
 
 ### 1. A lower lag threshold
 
-**Replace `apps/base/otel-demo/scaledobject.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# apps/base/otel-demo/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -231,19 +231,19 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/base/otel-demo/scaledobject.yaml
-git commit -m "accounting: lag threshold 2"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: lag threshold 2"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
 It scales out much sooner. Put it back:
 
-**Replace `apps/base/otel-demo/scaledobject.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# apps/base/otel-demo/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -267,19 +267,19 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/base/otel-demo/scaledobject.yaml
-git commit -m "accounting: lag threshold 10"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: lag threshold 10"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
 ### 2. More consumers than partitions
 
-**Replace `apps/base/otel-demo/scaledobject.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# apps/base/otel-demo/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -303,10 +303,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/base/otel-demo/scaledobject.yaml
-git commit -m "accounting: up to 6"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: up to 6"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
   /opt/kafka/bin/kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
@@ -315,9 +315,9 @@ kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
 Consumers past the partition count get no partition, and lag doesn't fall
 faster. Put it back:
 
-**Replace `apps/base/otel-demo/scaledobject.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# apps/base/otel-demo/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -341,19 +341,19 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/base/otel-demo/scaledobject.yaml
-git commit -m "accounting: up to 3"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: up to 3"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
 ### 3. Scale to zero
 
-**Replace `apps/base/otel-demo/scaledobject.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# apps/base/otel-demo/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -377,10 +377,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/base/otel-demo/scaledobject.yaml
-git commit -m "accounting: scale to zero"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: scale to zero"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo get deploy accounting -w
 ```
@@ -388,9 +388,9 @@ kubectl --context k3d-dev -n otel-demo get deploy accounting -w
 Zero when idle; KEDA, not the HPA, takes it from 0 to 1. Work out what happens
 to orders meanwhile. Put it back:
 
-**Replace `apps/base/otel-demo/scaledobject.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# apps/base/otel-demo/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -414,10 +414,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/base/otel-demo/scaledobject.yaml
-git commit -m "accounting: at least 1"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: at least 1"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```

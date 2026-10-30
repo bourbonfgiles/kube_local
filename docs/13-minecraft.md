@@ -65,30 +65,30 @@ helm --kube-context k3d-dev upgrade --install minecraft minecraft \
 
 | Kind | Name | File |
 | --- | --- | --- |
-| Namespace | `minecraft` | `apps/base/minecraft/namespace.yaml` |
-| HelmRepository | `itzg` | `apps/base/minecraft/source.yaml` |
-| HelmRelease | `minecraft` | `apps/base/minecraft/release.yaml` |
-| ConfigMap | `minecraft-values-base` | `apps/base/minecraft/values.yaml` |
-| ConfigMap | `minecraft-values-local` | `apps/local/minecraft/values.yaml` |
+| Namespace | `minecraft` | `~/repos/personal/kube_local/apps/base/minecraft/namespace.yaml` |
+| HelmRepository | `itzg` | `~/repos/personal/kube_local/apps/base/minecraft/source.yaml` |
+| HelmRelease | `minecraft` | `~/repos/personal/kube_local/apps/base/minecraft/release.yaml` |
+| ConfigMap | `minecraft-values-base` | `~/repos/personal/kube_local/apps/base/minecraft/values.yaml` |
+| ConfigMap | `minecraft-values-local` | `~/repos/personal/kube_local/apps/local/minecraft/values.yaml` |
 
 The NodePort is local because the port mapping is k3d's.
 
 ```sh
-mkdir -p apps/base/minecraft apps/local/minecraft
+mkdir -p ~/repos/personal/kube_local/apps/base/minecraft ~/repos/personal/kube_local/apps/local/minecraft
 ```
 
-**Write `apps/base/minecraft/namespace.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/minecraft/namespace.yaml`**
 ```yaml
-# apps/base/minecraft/namespace.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: minecraft
 ```
 
-**Write `apps/base/minecraft/source.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/minecraft/source.yaml`**
 ```yaml
-# apps/base/minecraft/source.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -99,9 +99,9 @@ spec:
   url: https://itzg.github.io/minecraft-server-charts/
 ```
 
-**Write `apps/base/minecraft/release.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/minecraft/release.yaml`**
 ```yaml
-# apps/base/minecraft/release.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -123,9 +123,9 @@ spec:
       name: minecraft-values-local
 ```
 
-**Write `apps/base/minecraft/values.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/minecraft/values.yaml`**
 ```yaml
-# apps/base/minecraft/values.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -150,9 +150,9 @@ data:
         Size: 5Gi           # capital S in this chart
 ```
 
-**Write `apps/local/minecraft/values.yaml`**
+**Write `~/repos/personal/kube_local/apps/local/minecraft/values.yaml`**
 ```yaml
-# apps/local/minecraft/values.yaml
+# ~/repos/personal/kube_local/apps/local/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -168,10 +168,10 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/
-git commit -m "Minecraft"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
+git -C ~/repos/personal/kube_local commit -m "Minecraft"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
 ```
@@ -212,9 +212,9 @@ New or changed lines sit between `# ── new ──` and `# ── end new ─
 
 ### 1. A smaller heap
 
-**Replace `apps/base/minecraft/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/minecraft/values.yaml`**
 ```yaml
-# apps/base/minecraft/values.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -242,10 +242,10 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/base/minecraft/values.yaml
-git commit -m "Minecraft: 1G heap"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
+git -C ~/repos/personal/kube_local commit -m "Minecraft: 1G heap"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
 kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
@@ -253,9 +253,9 @@ kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
 
 Compare the startup time in the logs, and `tps` with players on. Put it back:
 
-**Replace `apps/base/minecraft/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/minecraft/values.yaml`**
 ```yaml
-# apps/base/minecraft/values.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -283,19 +283,19 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/base/minecraft/values.yaml
-git commit -m "Minecraft: 2G heap"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
+git -C ~/repos/personal/kube_local commit -m "Minecraft: 2G heap"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n minecraft get pods
 ```
 
 ### 2. A limit below heap plus overhead
 
-**Replace `apps/base/minecraft/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/minecraft/values.yaml`**
 ```yaml
-# apps/base/minecraft/values.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -323,10 +323,10 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/base/minecraft/values.yaml
-git commit -m "Minecraft: 2304Mi limit"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
+git -C ~/repos/personal/kube_local commit -m "Minecraft: 2304Mi limit"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n minecraft get pods -w
 ```
@@ -336,9 +336,9 @@ pods -l app=minecraft` shows `OOMKilled` under `Last State`. Profiling step 6
 watches the same kill from the kernel's side; do it now if you want. Put it
 back:
 
-**Replace `apps/base/minecraft/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/minecraft/values.yaml`**
 ```yaml
-# apps/base/minecraft/values.yaml
+# ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -366,10 +366,10 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/base/minecraft/values.yaml
-git commit -m "Minecraft: 3Gi limit"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/minecraft/values.yaml
+git -C ~/repos/personal/kube_local commit -m "Minecraft: 3Gi limit"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n minecraft get pods
 ```
@@ -379,14 +379,14 @@ kubectl --context k3d-dev -n minecraft get pods
 Take the HelmRelease out of Git and put it back, leaving the namespace:
 
 ```sh
-git pull
-git rm apps/base/minecraft/release.yaml
-git commit -m "Minecraft: drop the release"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/apps/base/minecraft/release.yaml
+git -C ~/repos/personal/kube_local commit -m "Minecraft: drop the release"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev get pvc,pv -A | grep minecraft
-git revert --no-edit HEAD
-git push
+git -C ~/repos/personal/kube_local revert --no-edit HEAD
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev get pvc -n minecraft
 ```
@@ -410,7 +410,8 @@ This is the hard part, so it comes last. All of it runs on your machine.
    ```
 3. A CPU profile in folded format, 49 Hz for 30 seconds, while someone plays:
    ```sh
-   sudo /usr/share/bcc/tools/profile -p "$PID" -F 49 -f 30 > mc.folded
+   mkdir -p ~/repos/personal/scratch/13
+   sudo /usr/share/bcc/tools/profile -p "$PID" -F 49 -f 30 > ~/repos/personal/scratch/13/mc.folded
    ```
 4. Java frames show as hex: the JIT-compiled code has no symbols. Have the JVM
    write a perf map, then put it where BCC looks on the host:
@@ -425,9 +426,9 @@ This is the hard part, so it comes last. All of it runs on your machine.
    the host PID. Run step 3 again.
 5. A flame graph:
    ```sh
-   git clone https://github.com/brendangregg/FlameGraph ~/repos/FlameGraph
-   ~/repos/FlameGraph/flamegraph.pl mc.folded > mc.svg
-   cp mc.svg ~/Downloads/   # Zen can only open files from there
+   git clone https://github.com/brendangregg/FlameGraph ~/repos/personal/FlameGraph
+   ~/repos/personal/FlameGraph/flamegraph.pl ~/repos/personal/scratch/13/mc.folded > ~/repos/personal/scratch/13/mc.svg
+   cp ~/repos/personal/scratch/13/mc.svg ~/Downloads/   # Zen can only open files from there
    ```
 6. Watch an OOM kill as it happens: lower the memory limit in base values,
    push, add load, and run `sudo /usr/share/bcc/tools/oomkill`. Compare what

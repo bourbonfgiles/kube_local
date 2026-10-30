@@ -67,13 +67,13 @@ Nothing records who broke what, or how to stop it all at once.
 
 | Kind | Name | File |
 | --- | --- | --- |
-| Namespace | `chaos-mesh` | `infrastructure/base/chaos-mesh/namespace.yaml` |
-| HelmRepository | `chaos-mesh` | `infrastructure/base/chaos-mesh/source.yaml` |
-| HelmRelease | `chaos-mesh` | `infrastructure/base/chaos-mesh/release.yaml` |
-| ConfigMap | `chaos-mesh-values-local` | `infrastructure/local/chaos-mesh/values.yaml` |
-| HTTPRoute | `chaos-mesh/dashboard` | `infrastructure/local/chaos-mesh/route.yaml` |
-| Kustomization | `flux-system/chaos` | `clusters/dev/chaos.yaml` |
-| Namespace, Schedules | `chaos` | `chaos/*.yaml` |
+| Namespace | `chaos-mesh` | `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/namespace.yaml` |
+| HelmRepository | `chaos-mesh` | `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/source.yaml` |
+| HelmRelease | `chaos-mesh` | `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/release.yaml` |
+| ConfigMap | `chaos-mesh-values-local` | `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/values.yaml` |
+| HTTPRoute | `chaos-mesh/dashboard` | `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/route.yaml` |
+| Kustomization | `flux-system/chaos` | `~/repos/personal/kube_local/clusters/dev/chaos.yaml` |
+| Namespace, Schedules | `chaos` | `~/repos/personal/kube_local/chaos/*.yaml` |
 
 ### 1. The chart
 
@@ -81,21 +81,21 @@ The HelmRelease reads only the local ConfigMap: the containerd socket is
 k3s's.
 
 ```sh
-mkdir -p infrastructure/base/chaos-mesh infrastructure/local/chaos-mesh chaos
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/chaos-mesh ~/repos/personal/kube_local/infrastructure/local/chaos-mesh chaos
 ```
 
-**Write `infrastructure/base/chaos-mesh/namespace.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/namespace.yaml`**
 ```yaml
-# infrastructure/base/chaos-mesh/namespace.yaml
+# ~/repos/personal/kube_local/infrastructure/base/chaos-mesh/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: chaos-mesh
 ```
 
-**Write `infrastructure/base/chaos-mesh/source.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/source.yaml`**
 ```yaml
-# infrastructure/base/chaos-mesh/source.yaml
+# ~/repos/personal/kube_local/infrastructure/base/chaos-mesh/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -106,9 +106,9 @@ spec:
   url: https://charts.chaos-mesh.org
 ```
 
-**Write `infrastructure/base/chaos-mesh/release.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/release.yaml`**
 ```yaml
-# infrastructure/base/chaos-mesh/release.yaml
+# ~/repos/personal/kube_local/infrastructure/base/chaos-mesh/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -128,9 +128,9 @@ spec:
       name: chaos-mesh-values-local
 ```
 
-**Write `infrastructure/local/chaos-mesh/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/values.yaml`**
 ```yaml
-# infrastructure/local/chaos-mesh/values.yaml
+# ~/repos/personal/kube_local/infrastructure/local/chaos-mesh/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -147,9 +147,9 @@ data:
       securityMode: false   # no login; local only
 ```
 
-**Write `infrastructure/local/chaos-mesh/route.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/route.yaml`**
 ```yaml
-# infrastructure/local/chaos-mesh/route.yaml
+# ~/repos/personal/kube_local/infrastructure/local/chaos-mesh/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -173,9 +173,9 @@ all of them, and so they apply only after the CRDs exist.
 `postBuild.substitute` replaces `${CHAOS_PAUSED}` in every file under
 `./chaos` before applying; `${CHAOS_PAUSED:=true}` means "true if unset".
 
-**Write `clusters/dev/chaos.yaml`**
+**Write `~/repos/personal/kube_local/clusters/dev/chaos.yaml`**
 ```yaml
-# clusters/dev/chaos.yaml
+# ~/repos/personal/kube_local/clusters/dev/chaos.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -200,18 +200,18 @@ spec:
 
 Each carries the pause annotation:
 
-**Write `chaos/namespace.yaml`**
+**Write `~/repos/personal/kube_local/chaos/namespace.yaml`**
 ```yaml
-# chaos/namespace.yaml
+# ~/repos/personal/kube_local/chaos/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: chaos
 ```
 
-**Write `chaos/pod-kill.yaml`**
+**Write `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
 ```yaml
-# chaos/pod-kill.yaml
+# ~/repos/personal/kube_local/chaos/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Schedule
 metadata:
@@ -231,9 +231,9 @@ spec:
       namespaces: [otel-demo]
 ```
 
-**Write `chaos/latency.yaml`**
+**Write `~/repos/personal/kube_local/chaos/latency.yaml`**
 ```yaml
-# chaos/latency.yaml
+# ~/repos/personal/kube_local/chaos/latency.yaml
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Schedule
 metadata:
@@ -261,10 +261,10 @@ spec:
 ### 4. Push and look
 
 ```sh
-git pull
-git add clusters/ infrastructure/ chaos/
-git commit -m "Chaos Mesh and paused experiments"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/ ~/repos/personal/kube_local/infrastructure/ ~/repos/personal/kube_local/chaos/
+git -C ~/repos/personal/kube_local commit -m "Chaos Mesh and paused experiments"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 kubectl --context k3d-dev get schedules -n chaos
 ```
@@ -274,10 +274,10 @@ They're there, paused. The dashboard is at <https://chaos.kube.internal>.
 sofka / k9s: `:schedules -n chaos`
 
 > [!WARNING]
-> Don't `kubectl apply` files from `chaos/` by hand. Without Flux, the
+> Don't `kubectl apply` files from `~/repos/personal/kube_local/chaos/` by hand. Without Flux, the
 > annotation is the literal string `${CHAOS_PAUSED:=true}`, which isn't
 > `"true"`, so the Schedule runs. To check one is valid, use
-> `kubectl --context k3d-dev apply --dry-run=server -f chaos/pod-kill.yaml`.
+> `kubectl --context k3d-dev apply --dry-run=server -f ~/repos/personal/kube_local/chaos/pod-kill.yaml`.
 
 ## Iterate
 
@@ -300,9 +300,9 @@ sofka `T` on a Deployment; k9s `:events -n otel-demo`.
 
 ### 1. Flip the switch
 
-**Replace `clusters/dev/chaos.yaml`**
+**Replace `~/repos/personal/kube_local/clusters/dev/chaos.yaml`**
 ```yaml
-# clusters/dev/chaos.yaml
+# ~/repos/personal/kube_local/clusters/dev/chaos.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -327,9 +327,9 @@ spec:
 
 And every minute rather than five, while you watch:
 
-**Replace `chaos/pod-kill.yaml`**
+**Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
 ```yaml
-# chaos/pod-kill.yaml
+# ~/repos/personal/kube_local/chaos/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Schedule
 metadata:
@@ -352,10 +352,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add clusters/dev/chaos.yaml chaos/pod-kill.yaml
-git commit -m "Chaos on, pod-kill every minute"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/dev/chaos.yaml ~/repos/personal/kube_local/chaos/pod-kill.yaml
+git -C ~/repos/personal/kube_local commit -m "Chaos on, pod-kill every minute"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization chaos --with-source
 kubectl --context k3d-dev get pods -n otel-demo -w
 ```
@@ -366,9 +366,9 @@ shop notice?
 
 ### 2. Half the namespace
 
-**Replace `chaos/pod-kill.yaml`**
+**Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
 ```yaml
-# chaos/pod-kill.yaml
+# ~/repos/personal/kube_local/chaos/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Schedule
 metadata:
@@ -392,19 +392,19 @@ spec:
 ```
 
 ```sh
-git pull
-git add chaos/pod-kill.yaml
-git commit -m "pod-kill: half the namespace"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/chaos/pod-kill.yaml
+git -C ~/repos/personal/kube_local commit -m "pod-kill: half the namespace"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization chaos --with-source
 kubectl --context k3d-dev get pods -n otel-demo -w
 ```
 
 ### 3. Kill a container, not the pod
 
-**Replace `chaos/pod-kill.yaml`**
+**Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
 ```yaml
-# chaos/pod-kill.yaml
+# ~/repos/personal/kube_local/chaos/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Schedule
 metadata:
@@ -432,10 +432,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add chaos/pod-kill.yaml
-git commit -m "container-kill on cart"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/chaos/pod-kill.yaml
+git -C ~/repos/personal/kube_local commit -m "container-kill on cart"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization chaos --with-source
 kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart -w
 ```
@@ -447,9 +447,9 @@ kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=c
 The latency Schedule runs every 15 minutes. For one run now, a one-off in the
 same folder, under the same switch:
 
-**Write `chaos/latency-now.yaml`**
+**Write `~/repos/personal/kube_local/chaos/latency-now.yaml`**
 ```yaml
-# chaos/latency-now.yaml
+# ~/repos/personal/kube_local/chaos/latency-now.yaml
 apiVersion: chaos-mesh.org/v1alpha1
 kind: NetworkChaos
 metadata:
@@ -470,10 +470,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add chaos/latency-now.yaml
-git commit -m "Latency on cart, once"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/chaos/latency-now.yaml
+git -C ~/repos/personal/kube_local commit -m "Latency on cart, once"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization chaos --with-source
 kubectl --context k3d-dev -n chaos describe networkchaos cart-latency-now
 ```
@@ -482,10 +482,10 @@ Slow spans in Jaeger for the next two minutes. A one-off runs once, so remove
 it from Git once it's done:
 
 ```sh
-git pull
-git rm chaos/latency-now.yaml
-git commit -m "Drop the one-off latency"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/chaos/latency-now.yaml
+git -C ~/repos/personal/kube_local commit -m "Drop the one-off latency"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization chaos --with-source
 ```
 
@@ -493,9 +493,9 @@ flux --context k3d-dev reconcile kustomization chaos --with-source
 
 Back to the install's experiments, paused:
 
-**Replace `chaos/pod-kill.yaml`**
+**Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
 ```yaml
-# chaos/pod-kill.yaml
+# ~/repos/personal/kube_local/chaos/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
 kind: Schedule
 metadata:
@@ -519,9 +519,9 @@ spec:
       namespaces: [otel-demo]
 ```
 
-**Replace `clusters/dev/chaos.yaml`**
+**Replace `~/repos/personal/kube_local/clusters/dev/chaos.yaml`**
 ```yaml
-# clusters/dev/chaos.yaml
+# ~/repos/personal/kube_local/clusters/dev/chaos.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -545,10 +545,10 @@ spec:
 ```
 
 ```sh
-git pull
-git add clusters/dev/chaos.yaml chaos/pod-kill.yaml
-git commit -m "Chaos paused"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/dev/chaos.yaml ~/repos/personal/kube_local/chaos/pod-kill.yaml
+git -C ~/repos/personal/kube_local commit -m "Chaos paused"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization chaos --with-source
 kubectl --context k3d-dev get schedules -n chaos
 ```

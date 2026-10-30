@@ -99,11 +99,11 @@ location is local; on EKS the same keys would name your ECR repo.
 
 | Kind | Name | File |
 | --- | --- | --- |
-| ConfigMap, changed | `podinfo/podinfo-values-local` | `apps/local/podinfo/values.yaml` |
+| ConfigMap, changed | `podinfo/podinfo-values-local` | `~/repos/personal/kube_local/apps/local/podinfo/values.yaml` |
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -123,9 +123,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo from the local mirror"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo from the local mirror"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
@@ -139,15 +139,15 @@ sofka / k9s: `:pods -n podinfo`, `d`, the `Image ID` line. sofka extra
 
 ## Iterate
 
-Each step changes `apps/local/podinfo/values.yaml` and ends where it started:
+Each step changes `~/repos/personal/kube_local/apps/local/podinfo/values.yaml` and ends where it started:
 the mirror, tag `6.7.0`. New or changed lines sit between `# ── new ──` and
 `# ── end new ──`.
 
 ### 1. `localhost` from inside the cluster
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -167,9 +167,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: pull from localhost"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: pull from localhost"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev -n podinfo get pods
 ```
@@ -178,9 +178,9 @@ The new pod is stuck in `ErrImagePull`: inside the cluster, `localhost` is the
 node itself. The old pods keep serving, because the rollout never got a new
 pod ready. Put it back:
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -200,9 +200,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: pull from the mirror"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: pull from the mirror"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev -n podinfo get pods
 ```
@@ -217,9 +217,9 @@ skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050
 
 The chart builds `repository:tag`, so the digest goes after the tag:
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -239,9 +239,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: pin by digest"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: pin by digest"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
@@ -252,9 +252,9 @@ It works, and can never change under you, whatever happens to the tag.
 
 Back to the bare tag, pulled every time a pod starts:
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -275,9 +275,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: tag, always pull"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: tag, always pull"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
@@ -309,9 +309,9 @@ The restart pulls the real `6.7.0` while `Always` is still set; with the
 default policy the nodes would keep the copy they cached. Then drop
 `pullPolicy`:
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -329,9 +329,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: default pull policy"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: default pull policy"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev -n podinfo get pods
 ```

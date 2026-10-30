@@ -79,34 +79,34 @@ For the real podinfo, so lesson 8's commits become canaries.
 
 | Kind | Name | File |
 | --- | --- | --- |
-| Namespace | `flagger-system` | `infrastructure/base/flagger/namespace.yaml` |
-| HelmRepository | `flagger` | `infrastructure/base/flagger/source.yaml` |
-| HelmRelease | `flagger` | `infrastructure/base/flagger/release.yaml` |
-| ConfigMap | `flagger-values-base` | `infrastructure/base/flagger/values.yaml` |
-| HelmRelease | `podinfo/loadtester` | `apps/base/podinfo/loadtester.yaml` |
-| Canary | `podinfo/podinfo` | `apps/local/podinfo/canary.yaml` (names the local hostname) |
-| HTTPRoute, deleted | `podinfo/podinfo` | `apps/local/podinfo/route.yaml`: Flagger owns the route now |
-| ConfigMap, changed | `podinfo-values-base` | `apps/base/podinfo/values.yaml`: `service.enabled: false` |
-| HelmRelease, changed | `podinfo` | `apps/base/podinfo/release.yaml`: drift detection ignores replicas |
+| Namespace | `flagger-system` | `~/repos/personal/kube_local/infrastructure/base/flagger/namespace.yaml` |
+| HelmRepository | `flagger` | `~/repos/personal/kube_local/infrastructure/base/flagger/source.yaml` |
+| HelmRelease | `flagger` | `~/repos/personal/kube_local/infrastructure/base/flagger/release.yaml` |
+| ConfigMap | `flagger-values-base` | `~/repos/personal/kube_local/infrastructure/base/flagger/values.yaml` |
+| HelmRelease | `podinfo/loadtester` | `~/repos/personal/kube_local/apps/base/podinfo/loadtester.yaml` |
+| Canary | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml` (names the local hostname) |
+| HTTPRoute, deleted | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`: Flagger owns the route now |
+| ConfigMap, changed | `podinfo-values-base` | `~/repos/personal/kube_local/apps/base/podinfo/values.yaml`: `service.enabled: false` |
+| HelmRelease, changed | `podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`: drift detection ignores replicas |
 
 ### 1. Flagger
 
 ```sh
-mkdir -p infrastructure/base/flagger
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/flagger
 ```
 
-**Write `infrastructure/base/flagger/namespace.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/flagger/namespace.yaml`**
 ```yaml
-# infrastructure/base/flagger/namespace.yaml
+# ~/repos/personal/kube_local/infrastructure/base/flagger/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: flagger-system
 ```
 
-**Write `infrastructure/base/flagger/source.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/flagger/source.yaml`**
 ```yaml
-# infrastructure/base/flagger/source.yaml
+# ~/repos/personal/kube_local/infrastructure/base/flagger/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -117,9 +117,9 @@ spec:
   url: https://flagger.app
 ```
 
-**Write `infrastructure/base/flagger/release.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/flagger/release.yaml`**
 ```yaml
-# infrastructure/base/flagger/release.yaml
+# ~/repos/personal/kube_local/infrastructure/base/flagger/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -139,9 +139,9 @@ spec:
       name: flagger-values-base
 ```
 
-**Write `infrastructure/base/flagger/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/flagger/values.yaml`**
 ```yaml
-# infrastructure/base/flagger/values.yaml
+# ~/repos/personal/kube_local/infrastructure/base/flagger/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -161,10 +161,10 @@ Push it first and wait for `Ready`: the Canary and MetricTemplate kinds come
 from its chart.
 
 ```sh
-git pull
-git add infrastructure/
-git commit -m "Flagger with Flux"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local commit -m "Flagger with Flux"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 kubectl --context k3d-dev get helmreleases -n flagger-system -w
 ```
@@ -173,9 +173,9 @@ kubectl --context k3d-dev get helmreleases -n flagger-system -w
 
 The loadtester's `sourceRef` names the HelmRepository in Flagger's namespace:
 
-**Write `apps/base/podinfo/loadtester.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/podinfo/loadtester.yaml`**
 ```yaml
-# apps/base/podinfo/loadtester.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/loadtester.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -197,9 +197,9 @@ The Canary. The load goes through the Gateway, not straight to the canary
 Service: Hubble only records HTTP metrics for traffic Cilium's Envoy handles,
 and the weighted split only happens there.
 
-**Write `apps/local/podinfo/canary.yaml`**
+**Write `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
 ```yaml
-# apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -230,9 +230,9 @@ spec:
 
 Flagger creates the Services, so podinfo's own is off:
 
-**Replace `apps/base/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/values.yaml`**
 ```yaml
-# apps/base/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -251,9 +251,9 @@ data:
 
 Drift detection would fight Flagger over replicas, so it ignores them:
 
-**Replace `apps/base/podinfo/release.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
 ```yaml
-# apps/base/podinfo/release.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -285,16 +285,16 @@ spec:
 Flagger owns the route now:
 
 ```sh
-git rm apps/local/podinfo/route.yaml
+git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
 ```
 
 ### 3. Push and check
 
 ```sh
-git pull
-git add apps/
-git commit -m "Canary releases for podinfo"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
+git -C ~/repos/personal/kube_local commit -m "Canary releases for podinfo"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
@@ -324,9 +324,9 @@ New or changed lines sit between `# ── new ──` and `# ── end new ─
 
 ### 1. A release
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -345,10 +345,10 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: release one"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: release one"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
@@ -360,9 +360,9 @@ it promotes. Watch the weights with
 
 ### 2. Bigger steps
 
-**Replace `apps/local/podinfo/canary.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
 ```yaml
-# apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -393,9 +393,9 @@ spec:
           cmd: "hey -z 1m -q 10 -c 2 -host podinfo.kube.internal http://cilium-gateway-web.gateway/"
 ```
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -414,19 +414,19 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/
-git commit -m "podinfo: bigger steps, release two"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/
+git -C ~/repos/personal/kube_local commit -m "podinfo: bigger steps, release two"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
 
 Fewer, bigger steps. Back to 10:
 
-**Replace `apps/local/podinfo/canary.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
 ```yaml
-# apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -458,18 +458,18 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/canary.yaml
-git commit -m "podinfo: steps of 10"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: steps of 10"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 ```
 
 ### 3. A faulty release, with nothing watching
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -490,10 +490,10 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: faulty release"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: faulty release"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
@@ -502,9 +502,9 @@ No metrics yet, so nothing notices: it promotes, and the loop prints nothing
 but errors. Revert the commit, the way you would in real life:
 
 ```sh
-git pull
-git revert --no-edit HEAD
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local revert --no-edit HEAD
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
@@ -519,9 +519,9 @@ A MetricTemplate using Hubble's HTTP metrics. `destination_workload` and
 Deployment `podinfo`, primary as `podinfo-primary`. Run the query in
 Prometheus first.
 
-**Write `apps/base/podinfo/metric-template.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/podinfo/metric-template.yaml`**
 ```yaml
-# apps/base/podinfo/metric-template.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/metric-template.yaml
 apiVersion: flagger.app/v1beta1
 kind: MetricTemplate
 metadata:
@@ -537,9 +537,9 @@ spec:
     sum(rate(hubble_http_requests_total{destination_namespace="podinfo",destination_workload="podinfo"}[1m]))
 ```
 
-**Replace `apps/local/podinfo/canary.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
 ```yaml
-# apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -578,18 +578,18 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/
-git commit -m "podinfo: error-rate check"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
+git -C ~/repos/personal/kube_local commit -m "podinfo: error-rate check"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 ```
 
 Now the same faulty release:
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -610,10 +610,10 @@ data:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: faulty release again"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: faulty release again"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
@@ -625,9 +625,9 @@ failed, then revert:
 ```sh
 kubectl --context k3d-dev -n podinfo events --for canary/podinfo
 kubectl --context k3d-dev -n flagger-system logs deploy/flagger --tail 50
-git pull
-git revert --no-edit HEAD
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local revert --no-edit HEAD
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 ```
 
@@ -655,12 +655,12 @@ it. Flagger stays, and so do the app layers, for the next apps. Git can't hold
 an empty folder, so each keeps a `.gitkeep`:
 
 ```sh
-git pull
-git rm -r apps/base/podinfo apps/local/podinfo
-touch apps/base/.gitkeep apps/local/.gitkeep
-git add apps/
-git commit -m "Retire podinfo"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local rm -r ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/local/podinfo
+touch ~/repos/personal/kube_local/apps/base/.gitkeep ~/repos/personal/kube_local/apps/local/.gitkeep
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
+git -C ~/repos/personal/kube_local commit -m "Retire podinfo"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 flux --context k3d-dev reconcile kustomization apps-local
 flux --context k3d-dev reconcile kustomization apps-base

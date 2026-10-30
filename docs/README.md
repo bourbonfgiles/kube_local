@@ -44,9 +44,19 @@ come before Flux, by hand. Lesson 2 is Flux itself. Lesson 0 is a reference for 
 ## Where commands run
 
 > [!IMPORTANT]
-> Every command runs in a terminal on your machine, from the root of this repo
-> (`~/repos/personal/kube_local`), unless its block starts with a comment such
-> as `# in the pod shell`.
+> Every command runs in a terminal on your machine, unless its block starts
+> with a comment such as `# in the pod shell`. Every path is written in full,
+> so it doesn't matter where you are. Git commands use
+> `git -C ~/repos/personal/kube_local`.
+
+Everything lives side by side in `~/repos/personal`:
+
+| Folder | What |
+| --- | --- |
+| `~/repos/personal/dotfiles` | The machine and the CNI-less cluster |
+| `~/repos/personal/kube_local` | This repo: the platform, the lessons, and everything Flux applies |
+| `~/repos/personal/scratch` | Not a repo. Lessons 0 and 1 and the odd local check |
+| `~/repos/personal/karpenter`, `~/repos/personal/FlameGraph` | Clones for lessons 12 and 13 |
 
 Every command names the cluster, so a work context can never be hit by
 mistake:
@@ -62,8 +72,7 @@ mistake:
 `cilium --context k3d-dev hubble port-forward` opens. `dig`, `curl`, `skopeo`,
 `sops` and `mkcert` don't talk to the Kubernetes API at all.
 
-A pod shell is `kubectl exec -it`, or `s` on the pod in sofka or k9s. Lesson
-12 also works in a clone of the Karpenter repo; its blocks say so.
+A pod shell is `kubectl exec -it`, or `s` on the pod in sofka or k9s.
 
 ## Tools on your machine
 
@@ -92,8 +101,8 @@ provides it rather than installing it by hand.
 
 **Through Git.** From lesson 2 on, nothing is applied by hand except
 Secrets until lesson 5 and builds or registry pushes. You write a file, commit,
-push, and `flux reconcile` rather than wait. `scratch/`, which Git ignores, is
-only for lessons 0 and 1 and the odd local check.
+push, and `flux reconcile` rather than wait. `~/repos/personal/scratch` is only
+for lessons 0 and 1 and the odd local check.
 
 **Files.** Every file block is titled **Write `path`** (new) or **Replace
 `path`** (the whole file again, new or changed lines between `# ── new ──` and
@@ -106,11 +115,13 @@ end of lesson 9. Everything else you install is kept.
 **With Flux.** The same objects as files in the repo, in the layout lesson 2
 sets up:
 
+**Example only: the layout**
 ```
-clusters/dev/            Flux's entry point: one Kustomization per layer
-infrastructure/base/     Platform components, as you'd deploy them on EKS
-infrastructure/local/    The k3d-only parts: local values, *.kube.internal routes
-apps/base/, apps/local/  The same split for applications
+~/repos/personal/kube_local/
+  clusters/dev/            Flux's entry point: only Kustomizations, one per layer
+  infrastructure/base/     Platform components, as you'd deploy them on EKS
+  infrastructure/local/    The k3d-only parts: local values, *.kube.internal routes
+  apps/base/, apps/local/  The same split for applications
 ```
 
 A chart's values file becomes a ConfigMap that the HelmRelease reads.

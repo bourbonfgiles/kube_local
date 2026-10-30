@@ -77,37 +77,37 @@ With Flux the order becomes `dependsOn`.
 
 | Kind | Name | File |
 | --- | --- | --- |
-| Namespace | `monitoring` | `infrastructure/base/monitoring/namespace.yaml` |
-| HelmRepository | `prometheus-community` | `infrastructure/base/monitoring/source.yaml` |
-| HelmRelease | `prometheus-operator-crds` | `infrastructure/base/monitoring/crds.yaml` |
-| HelmRelease | `kube-prometheus-stack` | `infrastructure/base/monitoring/release.yaml` |
-| ConfigMap | `kube-prometheus-stack-values-base` | `infrastructure/base/monitoring/values.yaml` |
-| ConfigMap | `kube-prometheus-stack-values-local` | `infrastructure/local/monitoring/values.yaml` |
-| ServiceMonitor | `podinfo/podinfo` | `apps/base/podinfo/monitor.yaml` |
-| HTTPRoute | `grafana` | `infrastructure/local/monitoring/route.yaml` |
-| ConfigMap, changed | `kube-system/cilium-values-base` | `infrastructure/base/cilium/values.yaml` |
-| HelmRelease, changed | `kube-system/cilium` | `infrastructure/base/cilium/release.yaml` |
+| Namespace | `monitoring` | `~/repos/personal/kube_local/infrastructure/base/monitoring/namespace.yaml` |
+| HelmRepository | `prometheus-community` | `~/repos/personal/kube_local/infrastructure/base/monitoring/source.yaml` |
+| HelmRelease | `prometheus-operator-crds` | `~/repos/personal/kube_local/infrastructure/base/monitoring/crds.yaml` |
+| HelmRelease | `kube-prometheus-stack` | `~/repos/personal/kube_local/infrastructure/base/monitoring/release.yaml` |
+| ConfigMap | `kube-prometheus-stack-values-base` | `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml` |
+| ConfigMap | `kube-prometheus-stack-values-local` | `~/repos/personal/kube_local/infrastructure/local/monitoring/values.yaml` |
+| ServiceMonitor | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml` |
+| HTTPRoute | `grafana` | `~/repos/personal/kube_local/infrastructure/local/monitoring/route.yaml` |
+| ConfigMap, changed | `kube-system/cilium-values-base` | `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` |
+| HelmRelease, changed | `kube-system/cilium` | `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` |
 
 ### 1. The charts
 
 One HelmRepository for both charts. The stack waits for the CRDs release.
 
 ```sh
-mkdir -p infrastructure/base/monitoring infrastructure/local/monitoring
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/monitoring ~/repos/personal/kube_local/infrastructure/local/monitoring
 ```
 
-**Write `infrastructure/base/monitoring/namespace.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/monitoring/namespace.yaml`**
 ```yaml
-# infrastructure/base/monitoring/namespace.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: monitoring
 ```
 
-**Write `infrastructure/base/monitoring/source.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/monitoring/source.yaml`**
 ```yaml
-# infrastructure/base/monitoring/source.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -118,9 +118,9 @@ spec:
   url: https://prometheus-community.github.io/helm-charts
 ```
 
-**Write `infrastructure/base/monitoring/crds.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/monitoring/crds.yaml`**
 ```yaml
-# infrastructure/base/monitoring/crds.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/crds.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -137,9 +137,9 @@ spec:
         name: prometheus-community
 ```
 
-**Write `infrastructure/base/monitoring/release.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/monitoring/release.yaml`**
 ```yaml
-# infrastructure/base/monitoring/release.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -163,9 +163,9 @@ spec:
       name: kube-prometheus-stack-values-local
 ```
 
-**Write `infrastructure/base/monitoring/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml`**
 ```yaml
-# infrastructure/base/monitoring/values.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -183,9 +183,9 @@ data:
         podMonitorSelectorNilUsesHelmValues: false
 ```
 
-**Write `infrastructure/local/monitoring/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/local/monitoring/values.yaml`**
 ```yaml
-# infrastructure/local/monitoring/values.yaml
+# ~/repos/personal/kube_local/infrastructure/local/monitoring/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -207,9 +207,9 @@ data:
 
 ### 2. Grafana's route
 
-**Write `infrastructure/local/monitoring/route.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/local/monitoring/route.yaml`**
 ```yaml
-# infrastructure/local/monitoring/route.yaml
+# ~/repos/personal/kube_local/infrastructure/local/monitoring/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -230,9 +230,9 @@ spec:
 
 In `cilium-values-base`, since you'd want these on EKS too:
 
-**Replace `infrastructure/base/cilium/values.yaml`**
+**Replace `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml`**
 ```yaml
-# infrastructure/base/cilium/values.yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -282,13 +282,13 @@ data:
 ```
 
 `labelsContext` adds who-talked-to-whom labels to the HTTP metrics; lesson
-9's canary checks need them. `cilium/values.yaml` gets the same new lines,
+9's canary checks need them. `~/repos/personal/kube_local/cilium/values.yaml` gets the same new lines,
 so `bootstrap.sh` stays in step (lesson 2). And make Cilium wait for the
 CRDs:
 
-**Replace `infrastructure/base/cilium/release.yaml`**
+**Replace `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml`**
 ```yaml
-# infrastructure/base/cilium/release.yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -318,9 +318,9 @@ spec:
 ### 4. Push and watch
 
 ```sh
-git add cilium/ infrastructure/
-git commit -m "Monitoring with Flux"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/cilium/ ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local commit -m "Monitoring with Flux"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 kubectl --context k3d-dev get helmreleases -A -w
 ```
@@ -351,9 +351,9 @@ k9s `Shift-f`); `:pf` lists running forwards. The password:
 podinfo serves Prometheus metrics on its HTTP port. Scrape it. It goes with
 podinfo, so it leaves with podinfo in lesson 9:
 
-**Write `apps/base/podinfo/monitor.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml`**
 ```yaml
-# apps/base/podinfo/monitor.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -370,9 +370,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/monitor.yaml
-git commit -m "podinfo: ServiceMonitor"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: ServiceMonitor"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 ```
 
@@ -396,9 +396,9 @@ sit between `# ── new ──` and `# ── end new ──`.
 
 ### 1. A selector that matches nothing
 
-**Replace `apps/base/podinfo/monitor.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml`**
 ```yaml
-# apps/base/podinfo/monitor.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -417,9 +417,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/monitor.yaml
-git commit -m "podinfo: ServiceMonitor matches nothing"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: ServiceMonitor matches nothing"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 curl -s 'http://localhost:9090/api/v1/targets?state=active' \
   | jq -r '.data.activeTargets[].scrapePool' | sort -u
@@ -428,9 +428,9 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 Within a minute `serviceMonitor/podinfo/podinfo/0` is gone, and nothing
 errors: Flux applied a valid object, Prometheus found no targets. Put it back:
 
-**Replace `apps/base/podinfo/monitor.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml`**
 ```yaml
-# apps/base/podinfo/monitor.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -449,9 +449,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/monitor.yaml
-git commit -m "podinfo: ServiceMonitor back"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: ServiceMonitor back"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 curl -s 'http://localhost:9090/api/v1/targets?state=active' \
   | jq -r '.data.activeTargets[].scrapePool' | sort -u
@@ -459,9 +459,9 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 
 ### 2. Only the chart's own ServiceMonitors
 
-**Replace `infrastructure/base/monitoring/values.yaml`**
+**Replace `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml`**
 ```yaml
-# infrastructure/base/monitoring/values.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -482,9 +482,9 @@ data:
 ```
 
 ```sh
-git add infrastructure/base/monitoring/values.yaml
-git commit -m "Monitoring: chart ServiceMonitors only"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml
+git -C ~/repos/personal/kube_local commit -m "Monitoring: chart ServiceMonitors only"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization infra-base --with-source
 curl -s 'http://localhost:9090/api/v1/targets?state=active' \
   | jq -r '.data.activeTargets[].scrapePool' | sort -u
@@ -493,9 +493,9 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 Your ServiceMonitor is ignored, and so are Cilium's: Prometheus only picks up
 the chart's own. Put it back:
 
-**Replace `infrastructure/base/monitoring/values.yaml`**
+**Replace `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml`**
 ```yaml
-# infrastructure/base/monitoring/values.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -516,9 +516,9 @@ data:
 ```
 
 ```sh
-git add infrastructure/base/monitoring/values.yaml
-git commit -m "Monitoring: every ServiceMonitor"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml
+git -C ~/repos/personal/kube_local commit -m "Monitoring: every ServiceMonitor"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization infra-base --with-source
 curl -s 'http://localhost:9090/api/v1/targets?state=active' \
   | jq -r '.data.activeTargets[].scrapePool' | sort -u
@@ -526,9 +526,9 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 
 ### 3. Scrape every 5 seconds
 
-**Replace `apps/base/podinfo/monitor.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml`**
 ```yaml
-# apps/base/podinfo/monitor.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -547,9 +547,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/monitor.yaml
-git commit -m "podinfo: scrape every 5s"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: scrape every 5s"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 curl -s 'http://localhost:9090/api/v1/targets?state=active' \
   | jq -r '.data.activeTargets[].scrapePool' | sort -u
@@ -557,9 +557,9 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 
 Smoother graphs, more samples. Back to 15 seconds:
 
-**Replace `apps/base/podinfo/monitor.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml`**
 ```yaml
-# apps/base/podinfo/monitor.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -578,9 +578,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/monitor.yaml
-git commit -m "podinfo: scrape every 15s"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: scrape every 15s"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 curl -s 'http://localhost:9090/api/v1/targets?state=active' \
   | jq -r '.data.activeTargets[].scrapePool' | sort -u

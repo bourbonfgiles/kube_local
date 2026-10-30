@@ -29,7 +29,7 @@ the one line of podinfo's HelmRelease that Flux will own:
 
 **Example only: you write the whole file below**
 ```yaml
-# apps/base/podinfo/release.yaml, one line of it
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml, one line of it
 tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
 ```
 
@@ -90,9 +90,9 @@ registry and this cluster's branch.
 
 | Kind | Name | File |
 | --- | --- | --- |
-| ImageRepository, ImagePolicy, ImageUpdateAutomation | `podinfo` | `apps/local/podinfo/image.yaml` |
-| HelmRelease, changed | `podinfo` | `apps/base/podinfo/release.yaml`: the tag moves to `spec.values` |
-| ConfigMap, changed | `podinfo-values-local` | `apps/local/podinfo/values.yaml`: `image.tag` removed |
+| ImageRepository, ImagePolicy, ImageUpdateAutomation | `podinfo` | `~/repos/personal/kube_local/apps/local/podinfo/image.yaml` |
+| HelmRelease, changed | `podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`: the tag moves to `spec.values` |
+| ConfigMap, changed | `podinfo-values-local` | `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`: `image.tag` removed |
 
 ### 1. Move the tag where Flux can rewrite it
 
@@ -100,9 +100,9 @@ A marker inside a ConfigMap's `values.yaml` string is invisible to Flux, so the
 tag goes in the HelmRelease's `spec.values`, which also overrides every
 ConfigMap:
 
-**Replace `apps/base/podinfo/release.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
 ```yaml
-# apps/base/podinfo/release.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -129,9 +129,9 @@ spec:
 
 And take `tag` out of `podinfo-values-local`, leaving the repository:
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -152,9 +152,9 @@ data:
 The ImageRepository lists the registry's tags, the ImagePolicy picks one, and
 the ImageUpdateAutomation writes it over the marker and pushes:
 
-**Write `apps/local/podinfo/image.yaml`**
+**Write `~/repos/personal/kube_local/apps/local/podinfo/image.yaml`**
 ```yaml
-# apps/local/podinfo/image.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
@@ -206,9 +206,9 @@ spec:
 ### 3. Push, and watch Flux promote
 
 ```sh
-git add apps/
-git commit -m "Image automation for podinfo"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
+git -C ~/repos/personal/kube_local commit -m "Image automation for podinfo"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 flux --context k3d-dev get images all -n podinfo
 ```
@@ -218,13 +218,13 @@ automation's interval Flux commits it:
 
 ```sh
 flux --context k3d-dev reconcile image update podinfo -n podinfo
-git pull
-git log -1
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local log -1
 kubectl --context k3d-dev -n podinfo rollout status deploy/podinfo
 ```
 
 A commit by `fluxcdbot` that changes `6.7.0` to `6.7.1` in `release.yaml`, and
-the rollout it caused. From now on, `git pull` before every commit: Flux
+the rollout it caused. From now on, `git -C ~/repos/personal/kube_local pull` before every commit: Flux
 commits too.
 
 sofka / k9s: `:imagerepositories -n podinfo`, `d` for the tags;
@@ -239,9 +239,9 @@ New or changed lines sit between `# ── new ──` and `# ── end new ─
 
 ### 1. Pin one version
 
-**Replace `apps/local/podinfo/image.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/image.yaml`**
 ```yaml
-# apps/local/podinfo/image.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
@@ -293,15 +293,15 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/image.yaml
-git commit -m "podinfo: pin 6.7.0"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: pin 6.7.0"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 flux --context k3d-dev get images policy podinfo -n podinfo
 flux --context k3d-dev reconcile image update podinfo -n podinfo
-git pull
-git log -1 --oneline
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local log -1 --oneline
 kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
 ```
 
@@ -319,9 +319,9 @@ skopeo copy --all --dest-tls-verify=false \
 flux --context k3d-dev reconcile image repository podinfo -n podinfo
 ```
 
-**Replace `apps/local/podinfo/image.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/image.yaml`**
 ```yaml
-# apps/local/podinfo/image.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
@@ -373,15 +373,15 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/image.yaml
-git commit -m "podinfo: semver 6.x"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: semver 6.x"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 flux --context k3d-dev get images policy podinfo -n podinfo
 flux --context k3d-dev reconcile image update podinfo -n podinfo
-git pull
-git log -1 --oneline
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local log -1 --oneline
 kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
 ```
 
@@ -389,9 +389,9 @@ kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
 
 ### 3. Let prereleases in
 
-**Replace `apps/local/podinfo/image.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/image.yaml`**
 ```yaml
-# apps/local/podinfo/image.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
@@ -443,15 +443,15 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/image.yaml
-git commit -m "podinfo: allow prereleases"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: allow prereleases"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 flux --context k3d-dev get images policy podinfo -n podinfo
 flux --context k3d-dev reconcile image update podinfo -n podinfo
-git pull
-git log -1 --oneline
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local log -1 --oneline
 kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
 ```
 
@@ -459,9 +459,9 @@ Now `6.8.0-rc.1` wins, and it's what runs.
 
 ### 4. Alphabetical instead of semver
 
-**Replace `apps/local/podinfo/image.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/image.yaml`**
 ```yaml
-# apps/local/podinfo/image.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
@@ -513,15 +513,15 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/image.yaml
-git commit -m "podinfo: alphabetical"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: alphabetical"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 flux --context k3d-dev get images policy podinfo -n podinfo
 flux --context k3d-dev reconcile image update podinfo -n podinfo
-git pull
-git log -1 --oneline
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local log -1 --oneline
 kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
 ```
 
@@ -530,9 +530,9 @@ exists.
 
 ### 5. Back to the original range
 
-**Replace `apps/local/podinfo/image.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/image.yaml`**
 ```yaml
-# apps/local/podinfo/image.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
@@ -584,15 +584,15 @@ spec:
 ```
 
 ```sh
-git pull
-git add apps/local/podinfo/image.yaml
-git commit -m "podinfo: semver 6.x"
-git push
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/image.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: semver 6.x"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 flux --context k3d-dev get images policy podinfo -n podinfo
 flux --context k3d-dev reconcile image update podinfo -n podinfo
-git pull
-git log -1 --oneline
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local log -1 --oneline
 kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
 ```
 

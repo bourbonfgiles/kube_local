@@ -140,7 +140,7 @@ Fine-grained tokens → Generate new token**.
 | Resource owner | `bourbonfgiles` |
 | Repository access | Only select repositories: `kube_local` |
 | Administration | Read and write: creates the deploy key |
-| Contents | Read and write: pushes `clusters/dev/flux-system/` |
+| Contents | Read and write: pushes `~/repos/personal/kube_local/clusters/dev/flux-system/` |
 | Metadata | Read-only (GitHub adds it) |
 
 Copy the token. Read it into the shell without echoing it or leaving it in
@@ -157,7 +157,7 @@ You need a new one only if you bootstrap again, for example on a new cluster.
 ```sh
 flux bootstrap github --context k3d-dev \
   --owner bourbonfgiles --repository kube_local --personal --private=false \
-  --branch master --path clusters/dev \
+  --branch master --path ~/repos/personal/kube_local/clusters/dev \
   --components-extra image-reflector-controller,image-automation-controller \
   --read-write-key
 ```
@@ -168,16 +168,16 @@ flux bootstrap github --context k3d-dev \
 | `--components-extra ...` | The image controllers for lesson 8. Adding them later means bootstrapping again. |
 | `--read-write-key` | The deploy key can push, also for lesson 8. A read-only key isn't upgraded in place. |
 
-Then drop the token and fetch bootstrap's commit (in the repo root):
+Then drop the token and fetch bootstrap's commit:
 
 ```sh
 unset GITHUB_TOKEN
-git pull
+git -C ~/repos/personal/kube_local pull
 kubectl --context k3d-dev -n flux-system get secret flux-system
 ```
 
 The Secret is the deploy key; the same key shows under the repo's
-**Settings → Deploy keys**. Bootstrap committed `clusters/dev/flux-system/`:
+**Settings → Deploy keys**. Bootstrap committed `~/repos/personal/kube_local/clusters/dev/flux-system/`:
 
 - `gotk-components.yaml`: Flux itself.
 - `gotk-sync.yaml`: a `GitRepository` for this repo and a `Kustomization`
@@ -186,8 +186,8 @@ The Secret is the deploy key; the same key shows under the repo's
 ## How this repo is laid out
 
 > [!IMPORTANT]
-> Bootstrap only wrote `clusters/dev/flux-system/`. You write every other file
-> yourself, from this repo's root. The next three parts explain the layout;
+> Bootstrap only wrote `~/repos/personal/kube_local/clusters/dev/flux-system/`. You write every
+> other file yourself, at the full paths given. The next three parts explain the layout;
 > [Write the files](#write-the-files) is where you create them.
 
 Once Flux is in, everything you add goes in one of these places. `<component>`
@@ -195,30 +195,31 @@ stands for each chart you add in later lessons:
 
 **Example only: the pattern, nothing to create here**
 ```
-clusters/dev/
-  flux-system/                 Written by bootstrap. Don't edit.
-  infrastructure.yaml          Kustomizations infra-base, infra-local (and later infra-local-config)
-  apps.yaml                    Kustomizations apps-base, apps-local
-infrastructure/
-  base/<component>/            As you'd deploy it on EKS
-    namespace.yaml
-    source.yaml                HelmRepository or OCIRepository
-    release.yaml               HelmRelease
-    values.yaml                ConfigMap <component>-values-base
-  local/<component>/           Only because this is k3d
-    values.yaml                ConfigMap <component>-values-local
-    route.yaml                 Anything naming *.kube.internal
-  local-config/<component>/    Local objects whose CRDs come from a chart (lesson 4)
-apps/
-  base/<app>/, local/<app>/    The same split for applications
+~/repos/personal/kube_local/
+  clusters/dev/
+    flux-system/                 Written by bootstrap. Don't edit.
+    infrastructure.yaml          Kustomizations infra-base, infra-local (and later infra-local-config)
+    apps.yaml                    Kustomizations apps-base, apps-local
+  infrastructure/
+    base/<component>/            As you'd deploy it on EKS
+      namespace.yaml
+      source.yaml                HelmRepository or OCIRepository
+      release.yaml               HelmRelease
+      values.yaml                ConfigMap <component>-values-base
+    local/<component>/           Only because this is k3d
+      values.yaml                ConfigMap <component>-values-local
+      route.yaml                 Anything naming *.kube.internal
+    local-config/<component>/    Local objects whose CRDs come from a chart (lesson 4)
+  apps/
+    base/<app>/, local/<app>/    The same split for applications
 ```
 
-An EKS cluster would get `clusters/eks/` pointing at the same `base/`
-folders plus an `infrastructure/eks/`. Nothing in `base/` changes.
+An EKS cluster would get `~/repos/personal/kube_local/clusters/eks/` pointing at the same `base/`
+folders plus an `~/repos/personal/kube_local/infrastructure/eks/`. Nothing in `base/` changes.
 
 ### Layers
 
-`flux-system` applies `clusters/dev/`, which holds one Kustomization per
+`flux-system` applies `~/repos/personal/kube_local/clusters/dev/`, which holds one Kustomization per
 layer. Each points at a folder and can wait for another with `dependsOn`:
 
 ```mermaid
@@ -248,8 +249,8 @@ same order:
 
 | By hand | With Flux |
 | --- | --- |
-| `-f values-base.yaml` | ConfigMap `podinfo-values-base` in `apps/base/podinfo/values.yaml` |
-| `-f values-local.yaml` | ConfigMap `podinfo-values-local` in `apps/local/podinfo/values.yaml` |
+| `-f values-base.yaml` | ConfigMap `podinfo-values-base` in `~/repos/personal/kube_local/apps/base/podinfo/values.yaml` |
+| `-f values-local.yaml` | ConfigMap `podinfo-values-local` in `~/repos/personal/kube_local/apps/local/podinfo/values.yaml` |
 | `--set image.tag=...` | `spec.values` on the HelmRelease. Overrides every ConfigMap. |
 
 - The ConfigMaps must be in the HelmRelease's namespace.
@@ -259,18 +260,21 @@ same order:
 
 ### Write the files
 
-All in this repo's root, on top of what bootstrap pushed.
+Everything below goes in `~/repos/personal/kube_local`, at the top level, next
+to `clusters/`. Nothing but the Kustomization files goes under `clusters/dev/`:
+`flux-system` applies that folder directly, so anything else there skips the
+layers.
 
 1. Create the infrastructure folder and copy the Gateway from lesson 1:
    ```sh
-   mkdir -p infrastructure/base/gateway
-   cp scratch/01/gateway.yaml infrastructure/base/gateway/
+   mkdir -p ~/repos/personal/kube_local/infrastructure/base/gateway
+   cp ~/repos/personal/scratch/01/gateway.yaml ~/repos/personal/kube_local/infrastructure/base/gateway/
    ```
 2. Create the first layer:
 
-   **Write `clusters/dev/infrastructure.yaml`**
+   **Write `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
    ```yaml
-   # clusters/dev/infrastructure.yaml
+   # ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
    kind: Kustomization
    metadata:
@@ -288,31 +292,31 @@ All in this repo's root, on top of what bootstrap pushed.
 
 3. Commit, push, and reconcile rather than waiting a minute:
    ```sh
-   git add clusters/dev/infrastructure.yaml infrastructure/
-   git commit -m "Add infra-base with the Gateway"
-   git push
+   git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml ~/repos/personal/kube_local/infrastructure/
+   git -C ~/repos/personal/kube_local commit -m "Add infra-base with the Gateway"
+   git -C ~/repos/personal/kube_local push
    flux --context k3d-dev reconcile kustomization flux-system --with-source
    ```
 4. `kubectl --context k3d-dev get kustomizations,gateways -A`: the Gateway is
    back, from Git. sofka / k9s: `:kustomizations -A`, then `:gateways -A`.
 5. Create the podinfo folders:
    ```sh
-   mkdir -p apps/base/podinfo apps/local/podinfo
+   mkdir -p ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/local/podinfo
    ```
 6. Create podinfo's six files:
 
-   **Write `apps/base/podinfo/namespace.yaml`**
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/namespace.yaml`**
    ```yaml
-   # apps/base/podinfo/namespace.yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/namespace.yaml
    apiVersion: v1
    kind: Namespace
    metadata:
      name: podinfo
    ```
 
-   **Write `apps/base/podinfo/source.yaml`**
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
    ```yaml
-   # apps/base/podinfo/source.yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
    apiVersion: source.toolkit.fluxcd.io/v1
    kind: OCIRepository
    metadata:
@@ -328,9 +332,9 @@ All in this repo's root, on top of what bootstrap pushed.
        operation: copy
    ```
 
-   **Write `apps/base/podinfo/release.yaml`**
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
    ```yaml
-   # apps/base/podinfo/release.yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
    kind: HelmRelease
    metadata:
@@ -348,9 +352,9 @@ All in this repo's root, on top of what bootstrap pushed.
          name: podinfo-values-local
    ```
 
-   **Write `apps/base/podinfo/values.yaml`**
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/values.yaml`**
    ```yaml
-   # apps/base/podinfo/values.yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/values.yaml
    apiVersion: v1
    kind: ConfigMap
    metadata:
@@ -363,9 +367,9 @@ All in this repo's root, on top of what bootstrap pushed.
        replicaCount: 2
    ```
 
-   **Write `apps/local/podinfo/values.yaml`**
+   **Write `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
    ```yaml
-   # apps/local/podinfo/values.yaml
+   # ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
    apiVersion: v1
    kind: ConfigMap
    metadata:
@@ -379,9 +383,9 @@ All in this repo's root, on top of what bootstrap pushed.
          message: k3d
    ```
 
-   **Write `apps/local/podinfo/route.yaml`**
+   **Write `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`**
    ```yaml
-   # apps/local/podinfo/route.yaml
+   # ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
    apiVersion: gateway.networking.k8s.io/v1
    kind: HTTPRoute
    metadata:
@@ -400,9 +404,9 @@ All in this repo's root, on top of what bootstrap pushed.
 
 7. Create the apps layers:
 
-   **Write `clusters/dev/apps.yaml`**
+   **Write `~/repos/personal/kube_local/clusters/dev/apps.yaml`**
    ```yaml
-   # clusters/dev/apps.yaml
+   # ~/repos/personal/kube_local/clusters/dev/apps.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
    kind: Kustomization
    metadata:
@@ -438,9 +442,9 @@ All in this repo's root, on top of what bootstrap pushed.
 
 8. Commit, push, reconcile, then ask podinfo for its message:
    ```sh
-   git add clusters/dev/apps.yaml apps/
-   git commit -m "Add podinfo"
-   git push
+   git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/dev/apps.yaml ~/repos/personal/kube_local/apps/
+   git -C ~/repos/personal/kube_local commit -m "Add podinfo"
+   git -C ~/repos/personal/kube_local push
    flux --context k3d-dev reconcile kustomization flux-system --with-source
    kubectl --context k3d-dev wait kustomization/apps-local -n flux-system --for=condition=Ready --timeout=5m
    curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
@@ -456,9 +460,9 @@ between `# ── new ──` and `# ── end new ──`.
 
 ### 1. Change the message: a new Helm revision
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -475,9 +479,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: first change"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: first change"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 helm --kube-context k3d-dev history podinfo -n podinfo
 ```
@@ -499,9 +503,9 @@ only checks its own changes.
 
 ### 3. Drift detection: Flux puts it back
 
-**Replace `apps/base/podinfo/release.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
 ```yaml
-# apps/base/podinfo/release.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -524,9 +528,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/release.yaml
-git commit -m "podinfo: drift detection"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: drift detection"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n podinfo get service podinfo
 ```
@@ -549,9 +553,9 @@ Drift detection stays on from here; later lessons expect it.
 flux --context k3d-dev suspend helmrelease podinfo -n podinfo
 ```
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -568,9 +572,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: while suspended"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: while suspended"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 helm --kube-context k3d-dev history podinfo -n podinfo
 ```
@@ -585,9 +589,9 @@ helm --kube-context k3d-dev history podinfo -n podinfo
 
 ### 5. A tag that doesn't exist, then back
 
-**Replace `apps/base/podinfo/source.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
 ```yaml
-# apps/base/podinfo/source.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -606,9 +610,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/source.yaml
-git commit -m "podinfo: chart 9.9.9"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: chart 9.9.9"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n podinfo describe ocirepository podinfo
 flux --context k3d-dev get helmreleases -n podinfo
@@ -617,9 +621,9 @@ flux --context k3d-dev get helmreleases -n podinfo
 The OCIRepository reports the missing tag; the HelmRelease keeps running the
 last good chart. Put `6.7.1` back:
 
-**Replace `apps/base/podinfo/source.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
 ```yaml
-# apps/base/podinfo/source.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -638,9 +642,9 @@ spec:
 ```
 
 ```sh
-git add apps/base/podinfo/source.yaml
-git commit -m "podinfo: chart 6.7.1"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: chart 6.7.1"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 flux --context k3d-dev reconcile source oci podinfo -n podinfo
 kubectl --context k3d-dev -n podinfo get ocirepository podinfo
@@ -665,9 +669,9 @@ Flux actions:
 
 Later lessons expect the message `k3d`.
 
-**Replace `apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
 ```yaml
-# apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -684,9 +688,9 @@ data:
 ```
 
 ```sh
-git add apps/local/podinfo/values.yaml
-git commit -m "podinfo: back to k3d"
-git push
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: back to k3d"
+git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
 ```
@@ -705,9 +709,9 @@ curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
    ```sh
    flux --context k3d-dev diff kustomization apps-base --path ./apps/base
    ```
-4. Undo with `git revert` instead of editing: set `message: oops` in
-   `apps/local/podinfo/values.yaml`, push, then `git revert --no-edit HEAD` and
-   push again. Compare `git log --oneline -3` with
+4. Undo with `git -C ~/repos/personal/kube_local revert` instead of editing: set `message: oops` in
+   `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`, push, then `git -C ~/repos/personal/kube_local revert --no-edit HEAD` and
+   push again. Compare `git -C ~/repos/personal/kube_local log --oneline -3` with
    `helm --kube-context k3d-dev history podinfo -n podinfo`.
 5. Harder: adopt Cilium, below.
 
@@ -718,15 +722,15 @@ release name and namespace takes that release over, so Flux owns the CNI.
 
 | File | Contents |
 | --- | --- |
-| `clusters/dev/infrastructure.yaml` | Add Kustomization `infra-local` |
-| `infrastructure/base/cilium/source.yaml` | HelmRepository `cilium` in `kube-system`, `url: https://helm.cilium.io` |
-| `infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` both ConfigMaps, base first |
-| `infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `cilium/values.yaml` |
-| `infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `overlays/local/cilium-values.yaml` |
+| `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml` | Add Kustomization `infra-local` |
+| `~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml` | HelmRepository `cilium` in `kube-system`, `url: https://helm.cilium.io` |
+| `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` both ConfigMaps, base first |
+| `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `~/repos/personal/kube_local/cilium/values.yaml` |
+| `~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `~/repos/personal/kube_local/overlays/local/cilium-values.yaml` |
 
-**Replace `clusters/dev/infrastructure.yaml`**
+**Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
 ```yaml
-# clusters/dev/infrastructure.yaml
+# ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -760,9 +764,9 @@ spec:
 # ── end new ──
 ```
 
-**Write `infrastructure/base/cilium/source.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml`**
 ```yaml
-# infrastructure/base/cilium/source.yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -773,9 +777,9 @@ spec:
   url: https://helm.cilium.io
 ```
 
-**Write `infrastructure/base/cilium/release.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml`**
 ```yaml
-# infrastructure/base/cilium/release.yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -797,9 +801,9 @@ spec:
       name: cilium-values-local
 ```
 
-**Write `infrastructure/base/cilium/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml`**
 ```yaml
-# infrastructure/base/cilium/values.yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -825,9 +829,9 @@ data:
       enabled: true
 ```
 
-**Write `infrastructure/local/cilium/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml`**
 ```yaml
-# infrastructure/local/cilium/values.yaml
+# ~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -865,8 +869,8 @@ data:
       mode: kubernetes
 ```
 
-The ConfigMaps hold `cilium/values.yaml` and
-`overlays/local/cilium-values.yaml` unchanged.
+The ConfigMaps hold `~/repos/personal/kube_local/cilium/values.yaml` and
+`~/repos/personal/kube_local/overlays/local/cilium-values.yaml` unchanged.
 
 1. Compare what's installed with what you're about to commit. The two
    ConfigMaps merged must give exactly this:
@@ -883,11 +887,11 @@ The ConfigMaps hold `cilium/values.yaml` and
 
 > [!WARNING]
 > Wrong Cilium values take the cluster network down, and with it Flux's
-> ability to fix them. If it goes wrong, from the repo root:
+> ability to fix them. If it goes wrong:
 >
 > ```sh
 > flux --context k3d-dev suspend helmrelease cilium -n kube-system
-> ./overlays/local/bootstrap.sh
+> ~/repos/personal/kube_local/overlays/local/bootstrap.sh
 > ```
 >
 > Fix the values in Git and push, then hand Cilium back to Flux:
@@ -907,7 +911,7 @@ The ConfigMaps hold `cilium/values.yaml` and
   the same Kustomization, they wait on each other forever. Lesson 4 gives such
   objects their own layer.
 - Flux commits to the repo (bootstrap now, image automation in lesson 8).
-  `git pull` before you commit.
+  `git -C ~/repos/personal/kube_local pull` before you commit.
 
 ## Coming from Argo CD
 
@@ -915,7 +919,7 @@ The ConfigMaps hold `cilium/values.yaml` and
 | --- | --- |
 | `Application` (Git path) | `GitRepository` + `Kustomization` |
 | `Application` (Helm) | `HelmRepository` / `OCIRepository` + `HelmRelease` |
-| App of apps | A `Kustomization` whose path holds more `Kustomization`s, as `clusters/dev/` does |
+| App of apps | A `Kustomization` whose path holds more `Kustomization`s, as `~/repos/personal/kube_local/clusters/dev/` does |
 | Sync waves | `dependsOn` |
 | Self-heal | Default for manifests; `driftDetection` for HelmReleases |
 | Argo Rollouts | Flagger (lesson 9) |
