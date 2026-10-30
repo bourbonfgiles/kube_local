@@ -12,3 +12,7 @@ spec:
     name: flux-system
   path: ./infrastructure/base
   prune: true
+  postBuild:
+    substitute:
+      CLUSTER_NAME: dev
+      CLUSTER_DOMAIN: kube.internal

@@ -1,0 +1,12 @@
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d

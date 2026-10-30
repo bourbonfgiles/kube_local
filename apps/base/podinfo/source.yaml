@@ -1,0 +1,14 @@
+# ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    tag: 6.7.1
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy

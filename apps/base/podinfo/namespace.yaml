@@ -1,0 +1,5 @@
+# ~/repos/personal/kube_local/apps/base/podinfo/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: podinfo

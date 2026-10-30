@@ -1,0 +1,16 @@
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 10m
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  valuesFrom:
+    - kind: ConfigMap
+      name: podinfo-values-base
+    - kind: ConfigMap
+      name: podinfo-values-${CLUSTER_NAME}

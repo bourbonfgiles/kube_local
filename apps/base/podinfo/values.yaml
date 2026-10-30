@@ -1,0 +1,11 @@
+# ~/repos/personal/kube_local/apps/base/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-base
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    replicaCount: 2
