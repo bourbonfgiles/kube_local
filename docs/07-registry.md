@@ -134,7 +134,7 @@ Each pod's `Image ID` is the digest it resolved. When a pull fails,
 `kubectl --context k3d-dev -n podinfo describe pod` has the reason under
 Events.
 
-sofka / k9s: `:pods -n podinfo`, `d`, the `Image ID` line. sofka extra
+sofka / k9s: `:pods podinfo`, `d`, the `Image ID` line. sofka extra
 ([lesson 0](00-tools.md)): `X` names `ErrImagePull` and the event behind it.
 
 ## Iterate

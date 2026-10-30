@@ -227,8 +227,8 @@ A commit by `fluxcdbot` that changes `6.7.0` to `6.7.1` in `release.yaml`, and
 the rollout it caused. From now on, `git -C ~/repos/personal/kube_local pull` before every commit: Flux
 commits too.
 
-sofka / k9s: `:imagerepositories -n podinfo`, `d` for the tags;
-`:imagepolicies -n podinfo` for the pick. Scan now: sofka `t`; k9s `Shift-r`
+sofka / k9s: `:imagerepositories podinfo`, `d` for the tags;
+`:imagepolicies podinfo` for the pick. Scan now: sofka `t`; k9s `Shift-r`
 (dotfiles plugin). sofka extra ([lesson 0](00-tools.md)): `:rollout-history`
 on the Deployment has one revision per Flux commit.
 

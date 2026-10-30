@@ -271,7 +271,7 @@ kubectl --context k3d-dev get schedules -n chaos
 
 They're there, paused. The dashboard is at <https://chaos.kube.internal>.
 
-sofka / k9s: `:schedules -n chaos`
+sofka / k9s: `:schedules chaos`
 
 > [!WARNING]
 > Don't `kubectl apply` files from `~/repos/personal/kube_local/chaos/` by hand. Without Flux, the
@@ -290,7 +290,7 @@ What broke, in order:
 kubectl --context k3d-dev get events -n otel-demo --sort-by=.lastTimestamp
 ```
 
-sofka `T` on a Deployment; k9s `:events -n otel-demo`.
+sofka `T` on a Deployment; k9s `:events otel-demo`.
 
 > [!TIP]
 > A sofka extra ([lesson 0](00-tools.md)), and where its timeline earns its

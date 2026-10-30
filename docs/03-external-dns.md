@@ -85,7 +85,7 @@ kubectl --context k3d-dev -n external-dns get secret externaldns-tsig \
 
 The last command should print the same key BIND has.
 
-sofka / k9s: `:secrets -n external-dns`, `x` to decode
+sofka / k9s: `:secrets external-dns`, `x` to decode
 
 ### 2. The files
 
@@ -254,7 +254,7 @@ flux --context k3d-dev reconcile kustomization flux-system --with-source
 kubectl --context k3d-dev get helmreleases -n external-dns -w
 ```
 
-sofka / k9s: `:helmreleases -n external-dns`
+sofka / k9s: `:helmreleases external-dns`
 
 ```sh
 kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f
@@ -263,7 +263,7 @@ kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f
 Look for `Adding RR` lines. For only the failures, pipe through
 `grep -iE 'error|warn'`.
 
-sofka / k9s: `:pods -n external-dns`, `l`. Only the failures: sofka `ctrl-z`
+sofka / k9s: `:pods external-dns`, `l`. Only the failures: sofka `ctrl-z`
 in the logs view; k9s `/error`.
 
 ```sh
@@ -495,7 +495,7 @@ flux --context k3d-dev reconcile kustomization infra-local --with-source
    it an address from the pool; ExternalDNS names it.
 3. Restart BIND
    (`kubectl --context k3d-dev -n dns rollout restart deploy/bind`, or `r` on
-   it in `:deploy -n dns`). The zone lives in an
+   it in `:deploy dns`). The zone lives in an
    `emptyDir`, so records vanish. Time how long until ExternalDNS puts them
    back.
 4. Harder: a second ExternalDNS HelmRelease in Git, in its own namespace,

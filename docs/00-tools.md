@@ -23,7 +23,7 @@ flowchart LR
 ```
 
 sofka and k9s share most of their keys and the `:` command syntax, so
-`:pods -n podinfo`, `d`, `l`, `s`, `y`, `x` and `Shift-f` do the same thing in
+`:pods podinfo`, `d`, `l`, `s`, `y`, `x` and `Shift-f` do the same thing in
 both. The lessons are kubectl-first: each check is the kubectl command, then
 one `sofka / k9s:` line with the keys, split only where the two differ. This
 page has the full side by side, and what sofka does beyond k9s.
@@ -56,13 +56,21 @@ k9s 0.51.0.
 
 ## Start them
 
+Launch the TUIs bare and pick the cluster inside them. Everything after that
+is a `:` command in the app.
+
 | | kubectl | sofka | k9s |
 | --- | --- | --- | --- |
-| Start | `kubectl --context k3d-dev ...` | `sofka --context k3d-dev` | `k9s --context k3d-dev` |
-| In a namespace | `-n podinfo` | `sofka --context k3d-dev -n podinfo` | `k9s --context k3d-dev -n podinfo` |
-| Open a view | `kubectl --context k3d-dev get helmreleases -A` | `sofka --context k3d-dev helmreleases -A` | `k9s --context k3d-dev -c helmreleases` |
-| No writes | n/a | `--readonly` | `--readonly` |
+| Pick the cluster | `--context k3d-dev` on every command | `:ctx`, `⏎` on `k3d-dev` | `:ctx`, `⏎` on `k3d-dev` |
+| Open a view in a namespace | `-n podinfo` | `:pods podinfo` | `:pods podinfo` |
+| Open a view in all namespaces | `kubectl --context k3d-dev get helmreleases -A` | `:helmreleases all` | `:helmreleases all` |
+| Change namespace, keep the view | | `:ns flux-system` | `:ns`, `⏎` on one |
+| No writes | n/a | `sofka --readonly` | `k9s --readonly` |
 | Check the connection | `kubectl --context k3d-dev cluster-info` | `sofka --context k3d-dev --check` | |
+
+> [!WARNING]
+> Inside the app there are no flags: `:kustomizations -A` looks for a namespace
+> called `-A` and shows nothing. Use `all` (or `*`).
 
 sofka can also bring your k9s setup across. Look before you write anything:
 
@@ -78,7 +86,7 @@ plugins.
 
 | Do, on lesson 2's podinfo | kubectl | sofka | k9s |
 | --- | --- | --- | --- |
-| List | `kubectl --context k3d-dev get pods -n podinfo` | `:pods -n podinfo` | `:pods -n podinfo` |
+| List | `kubectl --context k3d-dev get pods -n podinfo` | `:pods podinfo` | `:pods podinfo` |
 | All namespaces | `-A` | `0` | `0` |
 | Switch namespace | `-n flux-system` | `n` | `:ns`, then `⏎` |
 | Custom resources | `kubectl --context k3d-dev get crds` | `:crds`, `⏎` on one | `:crds`, `⏎` on one |
@@ -93,7 +101,7 @@ plugins.
 | Owner | `kubectl --context k3d-dev -n podinfo get pods -l app.kubernetes.io/name=podinfo -o jsonpath='{.items[*].metadata.ownerReferences[*].name}'` | `Shift-j` | `Shift-j` |
 | Restart a workload | `kubectl --context k3d-dev -n podinfo rollout restart deploy/podinfo` | `r` | `r` |
 | Only what's broken | | `ctrl-z` | `ctrl-z` |
-| Tree from a kind down to containers | | `:deploy -n podinfo`, then `:xray` | `:xray deploy podinfo` |
+| Tree from a kind down to containers | | `:deploy podinfo`, then `:xray` | `:xray deploy podinfo` |
 | Helm releases | `helm --kube-context k3d-dev list -A` | `:helm`, `⏎` for history | `:helm`, `r` for history |
 | Flux reconcile | `flux --context k3d-dev reconcile hr podinfo -n podinfo` | `t` | `Shift-r` (plugin) |
 | Flux suspend | `flux --context k3d-dev suspend hr podinfo -n podinfo` | `t` | `Shift-t` (plugin) |
@@ -121,7 +129,7 @@ flowchart LR
 | `X` / `:explain` | Why is this unhealthy? | Workloads: rollout state, blocking pods and their reason (`ImagePullBackOff`, `CrashLoopBackOff`, `OOMKilled`, unschedulable, failed probes). Jobs, CronJobs, PVCs and Nodes get their own checks. Any other kind: its `Ready` condition and the other conditions. Recent Warning events for all. `⏎`, `E` or `l` on a finding jumps to it. |
 | `T` / `:timeline` | What changed, in order? | Replica, readiness, phase, restart and condition changes. Only what sofka saw while it ran; nothing on disk. |
 | `:diff` | What exactly changed? | Against `last-applied-configuration`, or for Flux- and Helm-managed objects, the previous version this session saw |
-| `:gitops` | Who owns this? | The Kustomization or HelmRelease, its source with applied and latest revision, `dependsOn`, and the managed resources. sofka's `flux trace`. |
+| `:gitops` | Who owns this? | Highlight the object first; with nothing selected it opens empty. The Kustomization or HelmRelease, its source with applied and latest revision, `dependsOn`, and the managed resources. sofka's `flux trace`. |
 | `⏎` on a HelmRelease, or `:helm` | What did Helm actually install? | Revision history; `⏎` values, `y` manifest, `d` notes. Read from Helm's own Secrets. |
 | `u` / `:adjacent` | What's connected to this? | Owners, children, and the ConfigMaps, Secrets, claims and node it names, one hop each way |
 | `:rollout-history` | Which revision broke it? | Deployment, StatefulSet and DaemonSet revisions; `⏎` diffs one against live |
@@ -190,20 +198,20 @@ spec:
             requests: {cpu: "64"}
 ```
 
-Start sofka on the namespace first, so its timeline sees everything:
+Open sofka on the namespace first, so its timeline sees everything:
+`:deployments broken`. Then, in a second terminal:
 
 ```sh
-sofka --context k3d-dev -n broken deployments
-kubectl --context k3d-dev apply -f ~/repos/personal/scratch/00/broken.yaml   # second terminal
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/00/broken.yaml
 ```
 
 | Try | kubectl | sofka | k9s |
 | --- | --- | --- | --- |
-| Find what's broken | `kubectl --context k3d-dev get pods -n broken` | `ctrl-z` | `:pods -n broken`, `ctrl-z` |
+| Find what's broken | `kubectl --context k3d-dev get pods -n broken` | `ctrl-z` | `:pods broken`, `ctrl-z` |
 | `bad-tag`: why | `kubectl --context k3d-dev -n broken describe pod -l app=bad-tag`, read Events | `X` on the Deployment | `d` on the pod |
 | `crashloop`: what it said | `kubectl --context k3d-dev -n broken logs -p -l app=crashloop` | `X`, then `l` on the finding | `p` on the pod |
-| `too-big`: why | `kubectl --context k3d-dev get events -n broken --field-selector reason=FailedScheduling` | `X`: unschedulable, and the scheduler's message | `:events -n broken` |
-| What happened, in order | `kubectl --context k3d-dev get events -n broken --sort-by=.lastTimestamp` | `T` on `crashloop`: each restart | `:events -n broken` |
+| `too-big`: why | `kubectl --context k3d-dev get events -n broken --field-selector reason=FailedScheduling` | `X`: unschedulable, and the scheduler's message | `:events broken` |
+| What happened, in order | `kubectl --context k3d-dev get events -n broken --sort-by=.lastTimestamp` | `T` on `crashloop`: each restart | `:events broken` |
 
 Then fix `bad-tag` and watch the rollout:
 

@@ -141,7 +141,7 @@ kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
 
 Note the partition count; step 2 below goes past it.
 
-sofka / k9s: `:pods -n otel-demo`, `s` on `kafka`.
+sofka / k9s: `:pods otel-demo`, `s` on `kafka`.
 
 ### 3. The ScaledObject
 
@@ -179,7 +179,7 @@ kubectl --context k3d-dev get scaledobjects,hpa -n otel-demo
 
 KEDA created `keda-hpa-accounting` from it.
 
-sofka / k9s: `:scaledobjects -n otel-demo`, then `:hpa -n otel-demo`. sofka
+sofka / k9s: `:scaledobjects otel-demo`, then `:hpa otel-demo`. sofka
 extra ([lesson 0](00-tools.md)): `X` on the ScaledObject if it isn't ready.
 
 ## Iterate
@@ -191,7 +191,7 @@ kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w   # termin
 kubectl --context k3d-dev -n keda logs deploy/keda-operator -f          # terminal 2
 ```
 
-sofka / k9s: `:hpa -n otel-demo`; `:pods -n keda`, `l` on `keda-operator`.
+sofka / k9s: `:hpa otel-demo`; `:pods keda`, `l` on `keda-operator`.
 sofka extras: `T` on `accounting` timestamps each replica change, and
 `ctrl-z` in the logs leaves only the errors.
 

@@ -326,7 +326,7 @@ kubectl --context k3d-dev get helmreleases -A -w
 ```
 
 sofka / k9s: `ctrl-z` on
-`:helmreleases -A` leaves only the ones not ready.
+`:helmreleases all` leaves only the ones not ready.
 
 ### 5. Look at it
 
@@ -342,9 +342,9 @@ kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-p
 <http://localhost:9090/targets> lists `cilium-agent`, `cilium-operator` and
 `hubble`, all `UP`. Leave the forward running for the rest of the lesson.
 
-sofka / k9s: `:svc -n monitoring`, then forward on the Service (sofka `f`,
+sofka / k9s: `:svc monitoring`, then forward on the Service (sofka `f`,
 k9s `Shift-f`); `:pf` lists running forwards. The password:
-`:secrets -n monitoring`, `x`.
+`:secrets monitoring`, `x`.
 
 ### 6. Your own ServiceMonitor
 
@@ -380,7 +380,7 @@ Within a minute `podinfo` is on the targets page. In Prometheus, query
 `rate(http_requests_total{namespace="podinfo"}[1m])` while you `curl` it.
 
 `kubectl --context k3d-dev get servicemonitors -A` lists what Prometheus can
-pick up. sofka / k9s: `:servicemonitors -A`
+pick up. sofka / k9s: `:servicemonitors all`
 
 ## Iterate
 

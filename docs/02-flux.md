@@ -298,7 +298,7 @@ layers.
    flux --context k3d-dev reconcile kustomization flux-system --with-source
    ```
 4. `kubectl --context k3d-dev get kustomizations,gateways -A`: the Gateway is
-   back, from Git. sofka / k9s: `:kustomizations -A`, then `:gateways -A`.
+   back, from Git. sofka / k9s: `:kustomizations all`, then `:gateways all`.
 5. Create the podinfo folders:
    ```sh
    mkdir -p ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/local/podinfo
@@ -450,7 +450,7 @@ layers.
    curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
    ```
    The message is `k3d`, from the local ConfigMap. sofka / k9s:
-   `:helmreleases -A`.
+   `:helmreleases all`.
 
 ## Iterate
 
@@ -660,7 +660,7 @@ Flux actions:
 
 > [!TIP]
 > A sofka extra ([lesson 0](00-tools.md)): with `ref.tag: 9.9.9`, `ctrl-z` on
-> `:ocirepositories -A` leaves only the broken source, and `X` gives its
+> `:ocirepositories all` leaves only the broken source, and `X` gives its
 > `Ready` reason. `:gitops` on the podinfo Deployment walks up to the
 > HelmRelease and its source, with the applied and latest revisions side by
 > side.

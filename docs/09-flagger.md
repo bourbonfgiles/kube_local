@@ -307,8 +307,8 @@ kubectl --context k3d-dev get deploy,httproutes -n podinfo
 
 `podinfo` is at 0, `podinfo-primary` serves, and the route is Flagger's.
 
-sofka / k9s: `:canaries -n podinfo`, `:deploy -n podinfo`,
-`:httproutes -n podinfo`
+sofka / k9s: `:canaries podinfo`, `:deploy podinfo`,
+`:httproutes podinfo`
 
 ## Iterate
 
@@ -631,10 +631,10 @@ git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-local --with-source
 ```
 
-sofka / k9s: `d` on the Canary; `:pods -n flagger-system`, `l`.
+sofka / k9s: `d` on the Canary; `:pods flagger-system`, `l`.
 
 > [!TIP]
-> A sofka extra ([lesson 0](00-tools.md)): open `:canaries -n podinfo` before
+> A sofka extra ([lesson 0](00-tools.md)): open `:canaries podinfo` before
 > the faulty release. `T` on the Canary records each condition change with a
 > timestamp, `E` gives Flagger's events for each failed check, and `T` on
 > Deployment `podinfo` shows the canary scaling up and back to zero.
