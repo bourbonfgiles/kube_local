@@ -85,6 +85,7 @@ sofka / k9s: `:pods -n flux-system`, then `:crds` and `/fluxcd`
 
 ### 2. A chart, the Flux way
 
+**`scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -142,6 +143,7 @@ and changed lines sit between `# ── new ──` and `# ── end new ──
 <details>
 <summary>1. Change the message: a new Helm revision</summary>
 
+**`scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -194,6 +196,7 @@ Revision 2, made by helm-controller, not by you.
 <details>
 <summary>2. Three replicas</summary>
 
+**`scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -261,6 +264,7 @@ It stays at 1: by default helm-controller only checks its own changes.
 <details>
 <summary>4. Drift detection: Flux puts it back</summary>
 
+**`scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -322,6 +326,7 @@ The apply alone brings it back to 3. Scale it down again and watch Flux undo it 
 flux --context k3d-dev suspend helmrelease podinfo -n flux-system
 ```
 
+**`scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -384,6 +389,7 @@ A new revision appears within a few seconds of resuming.
 <details>
 <summary>6. A tag that doesn't exist, then back</summary>
 
+**`scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -435,6 +441,7 @@ flux --context k3d-dev get helmreleases -n flux-system
 
 The OCIRepository reports the missing tag; the HelmRelease keeps running the last good chart. Put `6.7.1` back:
 
+**`scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -615,6 +622,7 @@ flowchart LR
   ab --> al["apps-local<br/>./apps/local"]
 ```
 
+**`clusters/dev/infrastructure.yaml`**
 ```yaml
 # clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -658,13 +666,17 @@ same order:
 <details>
 <summary>podinfo as Flux files</summary>
 
+**`apps/base/podinfo/namespace.yaml`**
 ```yaml
 # apps/base/podinfo/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: podinfo
----
+```
+
+**`apps/base/podinfo/source.yaml`**
+```yaml
 # apps/base/podinfo/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
@@ -679,7 +691,10 @@ spec:
   layerSelector:
     mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
     operation: copy
----
+```
+
+**`apps/base/podinfo/release.yaml`**
+```yaml
 # apps/base/podinfo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -696,7 +711,10 @@ spec:
       name: podinfo-values-base
     - kind: ConfigMap
       name: podinfo-values-local
----
+```
+
+**`apps/base/podinfo/values.yaml`**
+```yaml
 # apps/base/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -708,7 +726,10 @@ metadata:
 data:
   values.yaml: |
     replicaCount: 2
----
+```
+
+**`apps/local/podinfo/values.yaml`**
+```yaml
 # apps/local/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -721,7 +742,10 @@ data:
   values.yaml: |
     ui:
       message: k3d
----
+```
+
+**`apps/local/podinfo/route.yaml`**
+```yaml
 # apps/local/podinfo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -758,6 +782,8 @@ spec:
 4. `kubectl --context k3d-dev get kustomizations,gateways -A`: the Gateway is
    back, from Git. sofka / k9s: `:kustomizations -A`, then `:gateways -A`.
 5. The podinfo files above, plus the apps layers:
+
+   **`clusters/dev/apps.yaml`**
    ```yaml
    # clusters/dev/apps.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -792,6 +818,7 @@ spec:
      path: ./apps/local
      prune: true
    ```
+
    Push, then
    `curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message`.
 
@@ -831,6 +858,7 @@ release name and namespace takes that release over, so Flux owns the CNI.
 <details>
 <summary>Cilium as Flux files</summary>
 
+**`clusters/dev/infrastructure.yaml`**
 ```yaml
 # clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -866,6 +894,7 @@ spec:
 # ── end new ──
 ```
 
+**`infrastructure/base/cilium/source.yaml`**
 ```yaml
 # infrastructure/base/cilium/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -876,7 +905,10 @@ metadata:
 spec:
   interval: 1h
   url: https://helm.cilium.io
----
+```
+
+**`infrastructure/base/cilium/release.yaml`**
+```yaml
 # infrastructure/base/cilium/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -897,7 +929,10 @@ spec:
       name: cilium-values-base
     - kind: ConfigMap
       name: cilium-values-local
----
+```
+
+**`infrastructure/base/cilium/values.yaml`**
+```yaml
 # infrastructure/base/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -922,7 +957,10 @@ data:
 
     gatewayAPI:
       enabled: true
----
+```
+
+**`infrastructure/local/cilium/values.yaml`**
+```yaml
 # infrastructure/local/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap

@@ -53,6 +53,7 @@ service.
 
 ### 1. Values
 
+**`scratch/13/values-base.yaml`**
 ```yaml
 # scratch/13/values-base.yaml
 minecraftServer:
@@ -70,6 +71,7 @@ persistence:
     Size: 5Gi           # capital S in this chart
 ```
 
+**`scratch/13/values-local.yaml`**
 ```yaml
 # scratch/13/values-local.yaml
 minecraftServer:
@@ -127,6 +129,7 @@ or changed lines sit between `# ── new ──` and `# ── end new ──`
 <details>
 <summary>1. A smaller heap</summary>
 
+**`scratch/13/values-base.yaml`**
 ```yaml
 # scratch/13/values-base.yaml
 minecraftServer:
@@ -156,6 +159,7 @@ kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
 
 Compare the startup time in the logs, and `tps` with players on. Put it back:
 
+**`scratch/13/values-base.yaml`**
 ```yaml
 # scratch/13/values-base.yaml
 minecraftServer:
@@ -186,6 +190,7 @@ helm --kube-context k3d-dev upgrade --install minecraft minecraft \
 <details>
 <summary>2. A limit below heap plus overhead</summary>
 
+**`scratch/13/values-base.yaml`**
 ```yaml
 # scratch/13/values-base.yaml
 minecraftServer:
@@ -216,6 +221,7 @@ kubectl --context k3d-dev -n minecraft describe pods -l app=minecraft
 Under load it's OOM killed: `describe` shows `OOMKilled` under `Last State`.
 Put it back:
 
+**`scratch/13/values-base.yaml`**
 ```yaml
 # scratch/13/values-base.yaml
 minecraftServer:
@@ -297,13 +303,17 @@ because the port mapping is k3d's.
 <details>
 <summary>Minecraft as Flux files</summary>
 
+**`apps/base/minecraft/namespace.yaml`**
 ```yaml
 # apps/base/minecraft/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: minecraft
----
+```
+
+**`apps/base/minecraft/source.yaml`**
+```yaml
 # apps/base/minecraft/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -313,7 +323,10 @@ metadata:
 spec:
   interval: 1h
   url: https://itzg.github.io/minecraft-server-charts/
----
+```
+
+**`apps/base/minecraft/release.yaml`**
+```yaml
 # apps/base/minecraft/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -334,7 +347,10 @@ spec:
       name: minecraft-values-base
     - kind: ConfigMap
       name: minecraft-values-local
----
+```
+
+**`apps/base/minecraft/values.yaml`**
+```yaml
 # apps/base/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -358,7 +374,10 @@ data:
       dataDir:
         enabled: true
         Size: 5Gi           # capital S in this chart
----
+```
+
+**`apps/local/minecraft/values.yaml`**
+```yaml
 # apps/local/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap

@@ -79,6 +79,7 @@ differ on the shape:
 
 ### 2. A route to the proxy
 
+**`scratch/10/route.yaml`**
 ```yaml
 # scratch/10/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -137,6 +138,7 @@ Jaeger's Service is `jaeger`, port `16686`, and it serves under
 `/jaeger/ui` because the chart sets that base path for the proxy. A second
 route in the same file:
 
+**`scratch/10/route.yaml`**
 ```yaml
 # scratch/10/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -186,6 +188,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger
 <details>
 <summary>2. More load</summary>
 
+**`scratch/10/load.yaml`**
 ```yaml
 # scratch/10/load.yaml
 components:
@@ -238,13 +241,17 @@ and root URLs in local. Both start empty.
 <details>
 <summary>The demo as Flux files</summary>
 
+**`apps/base/otel-demo/namespace.yaml`**
 ```yaml
 # apps/base/otel-demo/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: otel-demo
----
+```
+
+**`apps/base/otel-demo/source.yaml`**
+```yaml
 # apps/base/otel-demo/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -254,7 +261,10 @@ metadata:
 spec:
   interval: 1h
   url: https://open-telemetry.github.io/opentelemetry-helm-charts
----
+```
+
+**`apps/base/otel-demo/release.yaml`**
+```yaml
 # apps/base/otel-demo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -275,7 +285,10 @@ spec:
       name: otel-demo-values-base
     - kind: ConfigMap
       name: otel-demo-values-local
----
+```
+
+**`apps/base/otel-demo/values.yaml`**
+```yaml
 # apps/base/otel-demo/values.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -286,7 +299,10 @@ metadata:
     reconcile.fluxcd.io/watch: Enabled
 data:
   values.yaml: "{}"
----
+```
+
+**`apps/local/otel-demo/values.yaml`**
+```yaml
 # apps/local/otel-demo/values.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -297,7 +313,10 @@ metadata:
     reconcile.fluxcd.io/watch: Enabled
 data:
   values.yaml: "{}"
----
+```
+
+**`apps/local/otel-demo/route.yaml`**
+```yaml
 # apps/local/otel-demo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

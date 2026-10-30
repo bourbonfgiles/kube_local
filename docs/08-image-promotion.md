@@ -69,6 +69,7 @@ or `k9s` ([lesson 0](00-tools.md)).
 The reflector half is read-only, so it's safe to explore by hand. Nothing
 writes to Git until the automation exists.
 
+**`scratch/08/image.yaml`**
 ```yaml
 # scratch/08/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -115,6 +116,7 @@ which tag it picked. New or changed lines sit between `# ── new ──` and
 <details>
 <summary>1. Pin one version</summary>
 
+**`scratch/08/image.yaml`**
 ```yaml
 # scratch/08/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -163,6 +165,7 @@ skopeo copy --all --dest-tls-verify=false \
 flux --context k3d-dev reconcile image repository podinfo-test -n flux-system
 ```
 
+**`scratch/08/image.yaml`**
 ```yaml
 # scratch/08/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -202,6 +205,7 @@ Still `6.7.1`: semver ranges skip prereleases.
 <details>
 <summary>3. Let prereleases in</summary>
 
+**`scratch/08/image.yaml`**
 ```yaml
 # scratch/08/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -241,6 +245,7 @@ Now `6.8.0-rc.1` wins.
 <details>
 <summary>4. Alphabetical instead of semver</summary>
 
+**`scratch/08/image.yaml`**
 ```yaml
 # scratch/08/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -276,6 +281,7 @@ flux --context k3d-dev get images policy podinfo-test -n flux-system
 It sorts tags as strings, so whichever sorts last wins. That's why semver
 exists. Back to the original range:
 
+**`scratch/08/image.yaml`**
 ```yaml
 # scratch/08/image.yaml
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -331,6 +337,8 @@ registry and this cluster's branch.
 1. **Move the tag where Flux can rewrite it.** A marker inside a ConfigMap's
    `values.yaml` string is invisible to Flux, so the tag goes in the
    HelmRelease's `spec.values`, which also overrides every ConfigMap:
+
+   **`apps/base/podinfo/release.yaml`**
    ```yaml
    # apps/base/podinfo/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
@@ -354,7 +362,10 @@ registry and this cluster's branch.
          tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
      # ── end new ──
    ```
+
    And take `tag` out of `podinfo-values-local`, leaving the repository:
+
+   **`apps/local/podinfo/values.yaml`**
    ```yaml
    # apps/local/podinfo/values.yaml
    apiVersion: v1
@@ -371,8 +382,11 @@ registry and this cluster's branch.
        image:
          repository: k3d-registry.localhost:5000/podinfo
    ```
+
 2. **The objects**: `scratch/08/image.yaml` renamed to `podinfo` in namespace
    `podinfo`, plus the automation:
+
+   **`apps/local/podinfo/image.yaml`**
    ```yaml
    # apps/local/podinfo/image.yaml
    apiVersion: image.toolkit.fluxcd.io/v1
@@ -424,6 +438,7 @@ registry and this cluster's branch.
        strategy: Setters
    # ── end new ──
    ```
+
 3. Commit and push:
    ```sh
    git add apps/

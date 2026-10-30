@@ -125,6 +125,7 @@ sofka / k9s: `:svc -n demo`
 
 ### 2. A Gateway
 
+**`scratch/01/gateway.yaml`**
 ```yaml
 # scratch/01/gateway.yaml
 apiVersion: v1
@@ -163,6 +164,7 @@ sofka / k9s: `:gateways -A`, then `:svc -n gateway`
 
 Start with everything to `blue`:
 
+**`scratch/01/route.yaml`**
 ```yaml
 # scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -193,6 +195,7 @@ between `# ── new ──` and `# ── end new ──`.
 <details>
 <summary>1. Path: <code>/green</code> to green, rewritten to <code>/</code></summary>
 
+**`scratch/01/route.yaml`**
 ```yaml
 # scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -238,6 +241,7 @@ Without the filter, podinfo gets `/green`, which it doesn't serve.
 <details>
 <summary>2. Header: <code>x-colour: green</code> to green</summary>
 
+**`scratch/01/route.yaml`**
 ```yaml
 # scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -288,6 +292,7 @@ curl -s -H 'Host: demo.kube.internal' -H 'x-colour: green' http://10.89.0.200/ |
 <details>
 <summary>3. Weights: 90/10 split on the catch-all</summary>
 
+**`scratch/01/route.yaml`**
 ```yaml
 # scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1

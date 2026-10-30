@@ -81,6 +81,7 @@ The two digests match: it's the same image.
 
 ### 3. Pull it from a pod, by tag and by digest
 
+**`scratch/07/pod.yaml`**
 ```yaml
 # scratch/07/pod.yaml
 apiVersion: v1
@@ -119,6 +120,7 @@ can't be changed in place. New or changed lines sit between `# ── new ──
 <details>
 <summary>1. <code>localhost</code> from inside the cluster</summary>
 
+**`scratch/07/pod.yaml`**
 ```yaml
 # scratch/07/pod.yaml
 apiVersion: v1
@@ -153,6 +155,7 @@ The digest from step 2, the same upstream and in the mirror:
 skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0
 ```
 
+**`scratch/07/pod.yaml`**
 ```yaml
 # scratch/07/pod.yaml
 apiVersion: v1
@@ -191,6 +194,7 @@ skopeo copy --all --dest-tls-verify=false \
   docker://localhost:5050/podinfo:6.7.0
 ```
 
+**`scratch/07/pod.yaml`**
 ```yaml
 # scratch/07/pod.yaml
 apiVersion: v1
@@ -257,6 +261,7 @@ location is local; on EKS the same keys would name your ECR repo.
 | --- | --- | --- |
 | ConfigMap, changed | `podinfo/podinfo-values-local` | `apps/local/podinfo/values.yaml` |
 
+**`apps/local/podinfo/values.yaml`**
 ```yaml
 # apps/local/podinfo/values.yaml
 apiVersion: v1

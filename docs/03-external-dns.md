@@ -70,6 +70,7 @@ sofka / k9s: `:secrets -n external-dns`, `x` to decode
 
 Split from the start into what you'd keep on EKS and what's local:
 
+**`scratch/03/values-base.yaml`**
 ```yaml
 # scratch/03/values-base.yaml
 sources: [service, gateway-httproute, gateway-grpcroute]
@@ -77,6 +78,7 @@ policy: sync
 registry: txt
 ```
 
+**`scratch/03/values-local.yaml`**
 ```yaml
 # scratch/03/values-local.yaml
 provider:
@@ -158,6 +160,7 @@ A new record within a minute. Run the `dig` again until it answers.
 <details>
 <summary>2. <code>policy: upsert-only</code>: records stay when routes go</summary>
 
+**`scratch/03/values-base.yaml`**
 ```yaml
 # scratch/03/values-base.yaml
 sources: [service, gateway-httproute, gateway-grpcroute]
@@ -180,6 +183,7 @@ The record stays: upsert-only never deletes.
 
 Back to `sync`:
 
+**`scratch/03/values-base.yaml`**
 ```yaml
 # scratch/03/values-base.yaml
 sources: [service, gateway-httproute, gateway-grpcroute]
@@ -205,6 +209,7 @@ Within a minute, the record is gone.
 
 The same file with the `--rfc2136-axfr` line removed:
 
+**`scratch/03/values-local.yaml`**
 ```yaml
 # scratch/03/values-local.yaml
 provider:
@@ -236,6 +241,7 @@ It can't list the zone, so it can't reconcile deletes.
 
 Put the line back:
 
+**`scratch/03/values-local.yaml`**
 ```yaml
 # scratch/03/values-local.yaml
 provider:
@@ -290,13 +296,17 @@ This chart comes from a classic Helm repository, so the release uses
 `chart.spec` with a `HelmRepository`, where podinfo used `chartRef` with an
 `OCIRepository`:
 
+**`infrastructure/base/external-dns/namespace.yaml`**
 ```yaml
 # infrastructure/base/external-dns/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: external-dns
----
+```
+
+**`infrastructure/base/external-dns/source.yaml`**
+```yaml
 # infrastructure/base/external-dns/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -306,7 +316,10 @@ metadata:
 spec:
   interval: 1h
   url: https://kubernetes-sigs.github.io/external-dns/
----
+```
+
+**`infrastructure/base/external-dns/release.yaml`**
+```yaml
 # infrastructure/base/external-dns/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -332,6 +345,7 @@ spec:
 The values ConfigMaps hold `scratch/03/values-base.yaml` and
 `values-local.yaml` unchanged, indented under `data.values.yaml`:
 
+**`infrastructure/base/external-dns/values.yaml`**
 ```yaml
 # infrastructure/base/external-dns/values.yaml
 apiVersion: v1
@@ -348,6 +362,7 @@ data:
     registry: txt
 ```
 
+**`infrastructure/local/external-dns/values.yaml`**
 ```yaml
 # infrastructure/local/external-dns/values.yaml
 apiVersion: v1
@@ -381,6 +396,7 @@ data:
 If you didn't adopt Cilium in lesson 2, this is the first file under
 `infrastructure/local/`, so `infra-local` goes in the same commit:
 
+**`clusters/dev/infrastructure.yaml`**
 ```yaml
 # clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1

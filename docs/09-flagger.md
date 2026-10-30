@@ -60,6 +60,7 @@ touched.
 
 ### 1. Flagger and the loadtester
 
+**`scratch/09/flagger-values.yaml`**
 ```yaml
 # scratch/09/flagger-values.yaml
 meshProvider: gatewayapi:v1
@@ -87,6 +88,7 @@ helm --kube-context k3d-dev upgrade --install podinfo oci://ghcr.io/stefanprodan
 
 ### 3. The Canary
 
+**`scratch/09/canary.yaml`**
 ```yaml
 # scratch/09/canary.yaml
 apiVersion: flagger.app/v1beta1
@@ -160,6 +162,7 @@ New or changed lines sit between `# ── new ──` and `# ── end new ─
 <details>
 <summary>1. Bigger steps</summary>
 
+**`scratch/09/canary.yaml`**
 ```yaml
 # scratch/09/canary.yaml
 apiVersion: flagger.app/v1beta1
@@ -201,6 +204,7 @@ kubectl --context k3d-dev get canaries -n canary-demo -w
 
 Fewer, bigger steps. Back to 10:
 
+**`scratch/09/canary.yaml`**
 ```yaml
 # scratch/09/canary.yaml
 apiVersion: flagger.app/v1beta1
@@ -267,6 +271,7 @@ Wait for `Succeeded`.
 
 A MetricTemplate using Hubble's HTTP metrics:
 
+**`scratch/09/error-rate.yaml`**
 ```yaml
 # scratch/09/error-rate.yaml
 apiVersion: flagger.app/v1beta1
@@ -291,6 +296,7 @@ counts the canary's share of traffic: Flagger's canary pods run as Deployment
 
 The Canary, with the check:
 
+**`scratch/09/canary.yaml`**
 ```yaml
 # scratch/09/canary.yaml
 apiVersion: flagger.app/v1beta1
@@ -394,13 +400,17 @@ Now for the real podinfo, so lesson 8's commits become canaries.
    <details>
    <summary>Flagger as Flux files</summary>
 
+   **`infrastructure/base/flagger/namespace.yaml`**
    ```yaml
    # infrastructure/base/flagger/namespace.yaml
    apiVersion: v1
    kind: Namespace
    metadata:
      name: flagger-system
-   ---
+   ```
+
+   **`infrastructure/base/flagger/source.yaml`**
+   ```yaml
    # infrastructure/base/flagger/source.yaml
    apiVersion: source.toolkit.fluxcd.io/v1
    kind: HelmRepository
@@ -410,7 +420,10 @@ Now for the real podinfo, so lesson 8's commits become canaries.
    spec:
      interval: 1h
      url: https://flagger.app
-   ---
+   ```
+
+   **`infrastructure/base/flagger/release.yaml`**
+   ```yaml
    # infrastructure/base/flagger/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
    kind: HelmRelease
@@ -429,7 +442,10 @@ Now for the real podinfo, so lesson 8's commits become canaries.
      valuesFrom:
        - kind: ConfigMap
          name: flagger-values-base
-   ---
+   ```
+
+   **`infrastructure/base/flagger/values.yaml`**
+   ```yaml
    # infrastructure/base/flagger/values.yaml
    apiVersion: v1
    kind: ConfigMap
@@ -453,6 +469,7 @@ Now for the real podinfo, so lesson 8's commits become canaries.
    <details>
    <summary>podinfo's canary files</summary>
 
+   **`apps/base/podinfo/loadtester.yaml`**
    ```yaml
    # apps/base/podinfo/loadtester.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
@@ -470,7 +487,10 @@ Now for the real podinfo, so lesson 8's commits become canaries.
            kind: HelmRepository
            name: flagger
            namespace: flagger-system
-   ---
+   ```
+
+   **`apps/base/podinfo/metric-template.yaml`**
+   ```yaml
    # apps/base/podinfo/metric-template.yaml
    apiVersion: flagger.app/v1beta1
    kind: MetricTemplate
@@ -485,7 +505,10 @@ Now for the real podinfo, so lesson 8's commits become canaries.
        100 * sum(rate(hubble_http_requests_total{destination_namespace="podinfo",destination_workload="podinfo",status=~"5.."}[1m]))
          /
        sum(rate(hubble_http_requests_total{destination_namespace="podinfo",destination_workload="podinfo"}[1m]))
-   ---
+   ```
+
+   **`apps/local/podinfo/canary.yaml`**
+   ```yaml
    # apps/local/podinfo/canary.yaml
    apiVersion: flagger.app/v1beta1
    kind: Canary
@@ -520,7 +543,10 @@ Now for the real podinfo, so lesson 8's commits become canaries.
            url: http://loadtester.podinfo/
            metadata:
              cmd: "hey -z 1m -q 10 -c 2 -host podinfo.kube.internal http://cilium-gateway-web.gateway/"
-   ---
+   ```
+
+   **`apps/base/podinfo/values.yaml`**
+   ```yaml
    # apps/base/podinfo/values.yaml
    apiVersion: v1
    kind: ConfigMap
@@ -545,6 +571,8 @@ Now for the real podinfo, so lesson 8's commits become canaries.
    `podinfo` now.
 4. If you turned on drift detection for podinfo (lesson 2's exercises), stop
    it fighting Flagger over replicas:
+
+   **`apps/base/podinfo/release.yaml`**
    ```yaml
    # apps/base/podinfo/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
@@ -574,6 +602,7 @@ Now for the real podinfo, so lesson 8's commits become canaries.
        image:
          tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
    ```
+
 5. Push Flagger first and wait for it to be `Ready`: the Canary and
    MetricTemplate kinds come from its chart:
    ```sh

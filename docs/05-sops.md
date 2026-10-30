@@ -168,6 +168,8 @@ kubectl --context k3d-dev -n default delete secret demo
 | Secret, encrypted | `cert-manager/local-ca` | `secrets/local/cert-manager-local-ca.yaml` |
 
 1. Rules, so you don't pass flags each time:
+
+   **`.sops.yaml`**
    ```yaml
    # .sops.yaml
    creation_rules:
@@ -175,6 +177,7 @@ kubectl --context k3d-dev -n default delete secret demo
        encrypted_regex: ^(data|stringData)$
        age: age1...   # yours: age-keygen -y ~/.config/sops/age/keys.txt
    ```
+
 2. Give Flux the private key:
    ```sh
    kubectl --context k3d-dev -n flux-system create secret generic sops-age \
@@ -198,6 +201,8 @@ kubectl --context k3d-dev -n default delete secret demo
    sops --encrypt --in-place secrets/local/cert-manager-local-ca.yaml
    ```
 5. The Kustomization that decrypts:
+
+   **`clusters/dev/secrets.yaml`**
    ```yaml
    # clusters/dev/secrets.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -219,6 +224,7 @@ kubectl --context k3d-dev -n default delete secret demo
        secretRef:
          name: sops-age
    ```
+
 6. Commit, push, and look:
    ```sh
    git add .sops.yaml clusters/dev/secrets.yaml secrets/

@@ -63,6 +63,7 @@ helm --kube-context k3d-dev upgrade --install prometheus-operator-crds prometheu
   -n monitoring --create-namespace
 ```
 
+**`scratch/06/values-base.yaml`**
 ```yaml
 # scratch/06/values-base.yaml
 crds:
@@ -73,6 +74,7 @@ prometheus:
     podMonitorSelectorNilUsesHelmValues: false
 ```
 
+**`scratch/06/values-local.yaml`**
 ```yaml
 # scratch/06/values-local.yaml
 kubeProxy:
@@ -111,6 +113,7 @@ k9s `Shift-f`); `:pf` lists running forwards. The password:
 
 podinfo serves Prometheus metrics on its HTTP port. Scrape it:
 
+**`scratch/06/podinfo-monitor.yaml`**
 ```yaml
 # scratch/06/podinfo-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -151,6 +154,7 @@ between `# ── new ──` and `# ── end new ──`.
 <details>
 <summary>1. A selector that matches nothing</summary>
 
+**`scratch/06/podinfo-monitor.yaml`**
 ```yaml
 # scratch/06/podinfo-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -179,6 +183,7 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 Within a minute `serviceMonitor/podinfo/podinfo/0` is gone, and nothing
 errors. Put it back:
 
+**`scratch/06/podinfo-monitor.yaml`**
 ```yaml
 # scratch/06/podinfo-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -207,6 +212,7 @@ kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
 <details>
 <summary>2. Only the chart's own ServiceMonitors</summary>
 
+**`scratch/06/values-base.yaml`**
 ```yaml
 # scratch/06/values-base.yaml
 crds:
@@ -230,6 +236,7 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 Your ServiceMonitor is ignored: Prometheus only picks up the chart's own.
 Put it back:
 
+**`scratch/06/values-base.yaml`**
 ```yaml
 # scratch/06/values-base.yaml
 crds:
@@ -253,6 +260,7 @@ helm --kube-context k3d-dev upgrade --install kube-prometheus-stack kube-prometh
 <details>
 <summary>3. Scrape every 5 seconds</summary>
 
+**`scratch/06/podinfo-monitor.yaml`**
 ```yaml
 # scratch/06/podinfo-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -278,6 +286,7 @@ kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
 
 Smoother graphs, more samples. Back to 15 seconds:
 
+**`scratch/06/podinfo-monitor.yaml`**
 ```yaml
 # scratch/06/podinfo-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
@@ -335,13 +344,17 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
    <details>
    <summary>The stack as Flux files</summary>
 
+   **`infrastructure/base/monitoring/namespace.yaml`**
    ```yaml
    # infrastructure/base/monitoring/namespace.yaml
    apiVersion: v1
    kind: Namespace
    metadata:
      name: monitoring
-   ---
+   ```
+
+   **`infrastructure/base/monitoring/source.yaml`**
+   ```yaml
    # infrastructure/base/monitoring/source.yaml
    apiVersion: source.toolkit.fluxcd.io/v1
    kind: HelmRepository
@@ -351,7 +364,10 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
    spec:
      interval: 1h
      url: https://prometheus-community.github.io/helm-charts
-   ---
+   ```
+
+   **`infrastructure/base/monitoring/crds.yaml`**
+   ```yaml
    # infrastructure/base/monitoring/crds.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
    kind: HelmRelease
@@ -367,7 +383,10 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
          sourceRef:
            kind: HelmRepository
            name: prometheus-community
-   ---
+   ```
+
+   **`infrastructure/base/monitoring/release.yaml`**
+   ```yaml
    # infrastructure/base/monitoring/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
    kind: HelmRelease
@@ -390,7 +409,10 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
          name: kube-prometheus-stack-values-base
        - kind: ConfigMap
          name: kube-prometheus-stack-values-local
-   ---
+   ```
+
+   **`infrastructure/base/monitoring/values.yaml`**
+   ```yaml
    # infrastructure/base/monitoring/values.yaml
    apiVersion: v1
    kind: ConfigMap
@@ -407,7 +429,10 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
          prometheusSpec:
            serviceMonitorSelectorNilUsesHelmValues: false
            podMonitorSelectorNilUsesHelmValues: false
-   ---
+   ```
+
+   **`infrastructure/local/monitoring/values.yaml`**
+   ```yaml
    # infrastructure/local/monitoring/values.yaml
    apiVersion: v1
    kind: ConfigMap
@@ -430,6 +455,8 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
 
    </details>
 2. Grafana's route:
+
+   **`infrastructure/local/monitoring/route.yaml`**
    ```yaml
    # infrastructure/local/monitoring/route.yaml
    apiVersion: gateway.networking.k8s.io/v1
@@ -447,7 +474,10 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
            - name: kube-prometheus-stack-grafana
              port: 80
    ```
+
 3. Cilium's metrics, in `cilium-values-base` (you'd want these on EKS too):
+
+   **`infrastructure/base/cilium/values.yaml`**
    ```yaml
    # infrastructure/base/cilium/values.yaml
    apiVersion: v1
@@ -497,10 +527,13 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
              enabled: true
        # ── end new ──
    ```
+
    `labelsContext` adds who-talked-to-whom labels to the HTTP metrics; lesson
    9's canary checks need them. `cilium/values.yaml` gets the same new lines,
    so `bootstrap.sh` stays in step (lesson 2).
    And make Cilium wait for the CRDs:
+
+   **`infrastructure/base/cilium/release.yaml`**
    ```yaml
    # infrastructure/base/cilium/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
@@ -528,6 +561,7 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
        - kind: ConfigMap
          name: cilium-values-local
    ```
+
 4. Commit, push, and watch:
    ```sh
    git add cilium/ infrastructure/

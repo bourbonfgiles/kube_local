@@ -85,6 +85,7 @@ Partitions are the ceiling: one consumer per partition at most.
 
 ### 3. The ScaledObject
 
+**`scratch/11/scaledobject.yaml`**
 ```yaml
 # scratch/11/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -146,6 +147,7 @@ changed lines sit between `# ── new ──` and `# ── end new ──`.
 <details>
 <summary>1. A lower lag threshold</summary>
 
+**`scratch/11/scaledobject.yaml`**
 ```yaml
 # scratch/11/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -177,6 +179,7 @@ kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 
 It scales out much sooner. Put it back:
 
+**`scratch/11/scaledobject.yaml`**
 ```yaml
 # scratch/11/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -212,6 +215,7 @@ kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
 
 Above the partition count from step 2:
 
+**`scratch/11/scaledobject.yaml`**
 ```yaml
 # scratch/11/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -246,6 +250,7 @@ kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
 The extra consumers sit idle, with no partition next to them, and lag doesn't
 fall faster. Put it back:
 
+**`scratch/11/scaledobject.yaml`**
 ```yaml
 # scratch/11/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -279,6 +284,7 @@ kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
 <details>
 <summary>3. Scale to zero</summary>
 
+**`scratch/11/scaledobject.yaml`**
 ```yaml
 # scratch/11/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -311,6 +317,7 @@ kubectl --context k3d-dev -n otel-demo get deploy accounting -w
 It scales to zero when idle. Work out what happens to orders meanwhile. Put
 it back:
 
+**`scratch/11/scaledobject.yaml`**
 ```yaml
 # scratch/11/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
@@ -364,13 +371,17 @@ No values ConfigMaps: defaults.
 <details>
 <summary>KEDA as Flux files</summary>
 
+**`infrastructure/base/keda/namespace.yaml`**
 ```yaml
 # infrastructure/base/keda/namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: keda
----
+```
+
+**`infrastructure/base/keda/source.yaml`**
+```yaml
 # infrastructure/base/keda/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
@@ -380,7 +391,10 @@ metadata:
 spec:
   interval: 1h
   url: https://kedacore.github.io/charts
----
+```
+
+**`infrastructure/base/keda/release.yaml`**
+```yaml
 # infrastructure/base/keda/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
@@ -402,6 +416,7 @@ spec:
 
 The ScaledObject, unchanged from `scratch/11/`:
 
+**`apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
 # apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
