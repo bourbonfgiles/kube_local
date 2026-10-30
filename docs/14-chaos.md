@@ -46,253 +46,22 @@ OpenTelemetry Demo (lesson 10) shows failures clearly in Jaeger and Grafana.
 **On your machine**: `kubectl`, `helm`, `flux`, `git`, and `sofka`
 or `k9s` ([lesson 0](00-tools.md)).
 
-## Install by hand
+## By hand, for comparison
 
-### 1. Chaos Mesh
+> [!NOTE]
+> Read this, don't run it. Below, experiments live in Git behind one switch.
 
-**Write `scratch/14/values-local.yaml`**
-```yaml
-# scratch/14/values-local.yaml
-chaosDaemon:
-  runtime: containerd
-  socketPath: /run/k3s/containerd/containerd.sock   # k3s's, not the default
-dashboard:
-  securityMode: false   # no login; local only
-```
+By hand, Chaos Mesh is one `helm` command, and an experiment runs the moment
+you apply it:
 
+**Example only: don't run it**
 ```sh
 helm --kube-context k3d-dev upgrade --install chaos-mesh chaos-mesh --repo https://charts.chaos-mesh.org \
-  --version 2.8.5 -n chaos-mesh --create-namespace -f scratch/14/values-local.yaml
+  --version 2.8.5 -n chaos-mesh --create-namespace -f values-local.yaml
+kubectl --context k3d-dev apply -f pod-kill.yaml
 ```
 
-```sh
-kubectl --context k3d-dev get pods -n chaos-mesh
-kubectl --context k3d-dev -n chaos-mesh port-forward svc/chaos-dashboard 2333
-```
-
-The controller, the dashboard, and a `chaos-daemon` on every node. The UI is
-on <http://localhost:2333>.
-
-sofka / k9s: `:pods -n chaos-mesh`; forward on `:svc -n chaos-mesh` with sofka
-`f`, k9s `Shift-f`.
-
-### 2. One experiment, once
-
-Before scheduling anything, kill one pod by hand:
-
-**Write `scratch/14/pod-kill.yaml`**
-```yaml
-# scratch/14/pod-kill.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
-metadata:
-  name: kill-one
-  namespace: otel-demo
-spec:
-  action: pod-kill
-  mode: one
-  selector:
-    namespaces: [otel-demo]
-    labelSelectors:
-      app.kubernetes.io/component: cart
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
-```
-
-```sh
-kubectl --context k3d-dev get pods -n otel-demo -w
-kubectl --context k3d-dev -n otel-demo describe podchaos kill-one
-```
-
-A `cart` pod restarts, and the PodChaos shows the record.
-
-sofka / k9s: `:pods -n otel-demo`, `d` on the PodChaos.
-
-A one-off experiment runs once. To run it again, delete it and re-apply:
-
-```sh
-kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
-kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
-```
-
-### 3. Iterate
-
-Steps 1 to 3 edit `scratch/14/pod-kill.yaml`, each building on the last, and
-re-create the experiment. New or changed lines sit between `# ── new ──` and
-`# ── end new ──`.
-
-#### 1. No label selector
-
-The same file with `labelSelectors` removed:
-
-**Replace `scratch/14/pod-kill.yaml`**
-```yaml
-# scratch/14/pod-kill.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
-metadata:
-  name: kill-one
-  namespace: otel-demo
-spec:
-  action: pod-kill
-  mode: one
-  selector:
-    namespaces: [otel-demo]
-```
-
-```sh
-kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
-kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
-kubectl --context k3d-dev get pods -n otel-demo -w
-```
-
-A random demo pod dies each time. Which ones does the shop notice?
-
-#### 2. Half the namespace
-
-**Replace `scratch/14/pod-kill.yaml`**
-```yaml
-# scratch/14/pod-kill.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
-metadata:
-  name: kill-one
-  namespace: otel-demo
-spec:
-  action: pod-kill
-  # ── new ──
-  mode: fixed-percent
-  value: "50"
-  # ── end new ──
-  selector:
-    namespaces: [otel-demo]
-```
-
-```sh
-kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
-kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
-kubectl --context k3d-dev get pods -n otel-demo -w
-```
-
-Half the namespace at once.
-
-#### 3. Kill a container, not the pod
-
-**Replace `scratch/14/pod-kill.yaml`**
-```yaml
-# scratch/14/pod-kill.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
-metadata:
-  name: kill-one
-  namespace: otel-demo
-spec:
-  # ── new ──
-  action: container-kill
-  # ── end new ──
-  # ── new ──
-  mode: one
-  # ── end new ──
-  # ── new ──
-  containerNames: [cart]
-  # ── end new ──
-  selector:
-    namespaces: [otel-demo]
-    # ── new ──
-    labelSelectors:
-      app.kubernetes.io/component: cart
-    # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev delete -f scratch/14/pod-kill.yaml
-kubectl --context k3d-dev apply -f scratch/14/pod-kill.yaml
-kubectl --context k3d-dev get pods -n otel-demo -w
-kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart
-```
-
-The container restarts (`RESTARTS` goes up); the pod survives. Put the file
-back as it was in "One experiment, once":
-
-**Replace `scratch/14/pod-kill.yaml`**
-```yaml
-# scratch/14/pod-kill.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
-metadata:
-  name: kill-one
-  namespace: otel-demo
-spec:
-  # ── new ──
-  action: pod-kill
-  # ── end new ──
-  mode: one
-  selector:
-    namespaces: [otel-demo]
-    labelSelectors:
-      app.kubernetes.io/component: cart
-```
-
-#### 4. 200ms latency on cart for two minutes
-
-**Write `scratch/14/latency.yaml`**
-```yaml
-# scratch/14/latency.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: NetworkChaos
-metadata:
-  name: cart-latency
-  namespace: otel-demo
-spec:
-  action: delay
-  mode: all
-  selector:
-    namespaces: [otel-demo]
-    labelSelectors:
-      app.kubernetes.io/component: cart
-  delay:
-    latency: 200ms
-  duration: 2m
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/14/latency.yaml
-kubectl --context k3d-dev -n otel-demo describe networkchaos cart-latency
-```
-
-Slow spans in Jaeger for the next two minutes. It stops on its own; remove
-the record:
-
-```sh
-kubectl --context k3d-dev delete -f scratch/14/latency.yaml
-```
-
-If a selector matches nothing, check the label:
-
-```sh
-kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart
-kubectl --context k3d-dev get events -n otel-demo --sort-by=.lastTimestamp
-```
-
-The second is what broke, in order.
-
-sofka / k9s: `:pods -n otel-demo`, `/-l app.kubernetes.io/component=cart`.
-What broke: sofka `T` on `cart`'s Deployment; k9s `:events -n otel-demo`.
-
-> [!TIP]
-> A sofka extra ([lesson 0](00-tools.md)), and where its timeline earns its
-> keep. Open `:workloads otel-demo` before you flip the switch: `ctrl-z` keeps
-> only what's hurt right now, `T` on a Deployment says when it lost pods and
-> when it had them back, and `:bundle` on it writes the incident up for you.
-
-### 4. Clean up
-
-```sh
-kubectl --context k3d-dev delete -f scratch/14/ --ignore-not-found
-helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
-```
+Nothing records who broke what, or how to stop it all at once.
 
 ## Install with Flux
 
@@ -306,197 +75,483 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
 | Kustomization | `flux-system/chaos` | `clusters/dev/chaos.yaml` |
 | Namespace, Schedules | `chaos` | `chaos/*.yaml` |
 
-1. **The chart.** The HelmRelease reads only the local ConfigMap, which holds
-   `scratch/14/values-local.yaml` unchanged.
+### 1. The chart
 
-   **Write `infrastructure/base/chaos-mesh/namespace.yaml`**
-   ```yaml
-   # infrastructure/base/chaos-mesh/namespace.yaml
-   apiVersion: v1
-   kind: Namespace
-   metadata:
-     name: chaos-mesh
-   ```
+The HelmRelease reads only the local ConfigMap: the containerd socket is
+k3s's.
 
-   **Write `infrastructure/base/chaos-mesh/source.yaml`**
-   ```yaml
-   # infrastructure/base/chaos-mesh/source.yaml
-   apiVersion: source.toolkit.fluxcd.io/v1
-   kind: HelmRepository
-   metadata:
-     name: chaos-mesh
-     namespace: chaos-mesh
-   spec:
-     interval: 1h
-     url: https://charts.chaos-mesh.org
-   ```
+```sh
+mkdir -p infrastructure/base/chaos-mesh infrastructure/local/chaos-mesh chaos
+```
 
-   **Write `infrastructure/base/chaos-mesh/release.yaml`**
-   ```yaml
-   # infrastructure/base/chaos-mesh/release.yaml
-   apiVersion: helm.toolkit.fluxcd.io/v2
-   kind: HelmRelease
-   metadata:
-     name: chaos-mesh
-     namespace: chaos-mesh
-   spec:
-     interval: 10m
-     chart:
-       spec:
-         chart: chaos-mesh
-         version: 2.8.5
-         sourceRef:
-           kind: HelmRepository
-           name: chaos-mesh
-     valuesFrom:
-       - kind: ConfigMap
-         name: chaos-mesh-values-local
-   ```
+**Write `infrastructure/base/chaos-mesh/namespace.yaml`**
+```yaml
+# infrastructure/base/chaos-mesh/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chaos-mesh
+```
 
-   **Write `infrastructure/local/chaos-mesh/values.yaml`**
-   ```yaml
-   # infrastructure/local/chaos-mesh/values.yaml
-   apiVersion: v1
-   kind: ConfigMap
-   metadata:
-     name: chaos-mesh-values-local
-     namespace: chaos-mesh
-     labels:
-       reconcile.fluxcd.io/watch: Enabled
-   data:
-     values.yaml: |
-       chaosDaemon:
-         runtime: containerd
-         socketPath: /run/k3s/containerd/containerd.sock   # k3s's, not the default
-       dashboard:
-         securityMode: false   # no login; local only
-   ```
+**Write `infrastructure/base/chaos-mesh/source.yaml`**
+```yaml
+# infrastructure/base/chaos-mesh/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: chaos-mesh
+  namespace: chaos-mesh
+spec:
+  interval: 1h
+  url: https://charts.chaos-mesh.org
+```
 
-   **Write `infrastructure/local/chaos-mesh/route.yaml`**
-   ```yaml
-   # infrastructure/local/chaos-mesh/route.yaml
-   apiVersion: gateway.networking.k8s.io/v1
-   kind: HTTPRoute
-   metadata:
-     name: dashboard
-     namespace: chaos-mesh
-   spec:
-     parentRefs:
-       - name: web
-         namespace: gateway
-     hostnames: [chaos.kube.internal]
-     rules:
-       - backendRefs:
-           - name: chaos-dashboard
-             port: 2333
-   ```
+**Write `infrastructure/base/chaos-mesh/release.yaml`**
+```yaml
+# infrastructure/base/chaos-mesh/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: chaos-mesh
+  namespace: chaos-mesh
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: chaos-mesh
+      version: 2.8.5
+      sourceRef:
+        kind: HelmRepository
+        name: chaos-mesh
+  valuesFrom:
+    - kind: ConfigMap
+      name: chaos-mesh-values-local
+```
 
-2. **The switch.** Experiments get their own folder and Kustomization, so one
-   variable reaches all of them, and so they apply only after the CRDs exist:
+**Write `infrastructure/local/chaos-mesh/values.yaml`**
+```yaml
+# infrastructure/local/chaos-mesh/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-mesh-values-local
+  namespace: chaos-mesh
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    chaosDaemon:
+      runtime: containerd
+      socketPath: /run/k3s/containerd/containerd.sock   # k3s's, not the default
+    dashboard:
+      securityMode: false   # no login; local only
+```
 
-   **Write `clusters/dev/chaos.yaml`**
-   ```yaml
-   # clusters/dev/chaos.yaml
-   apiVersion: kustomize.toolkit.fluxcd.io/v1
-   kind: Kustomization
-   metadata:
-     name: chaos
-     namespace: flux-system
-   spec:
-     dependsOn:
-       - name: infra-local
-     interval: 10m
-     retryInterval: 1m
-     sourceRef:
-       kind: GitRepository
-       name: flux-system
-     path: ./chaos
-     prune: true
-     postBuild:
-       substitute:
-         CHAOS_PAUSED: "true"
-   ```
+**Write `infrastructure/local/chaos-mesh/route.yaml`**
+```yaml
+# infrastructure/local/chaos-mesh/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: dashboard
+  namespace: chaos-mesh
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [chaos.kube.internal]
+  rules:
+    - backendRefs:
+        - name: chaos-dashboard
+          port: 2333
+```
 
-   `postBuild.substitute` replaces `${CHAOS_PAUSED}` in every file under
-   `./chaos` before applying. `${CHAOS_PAUSED:=true}` means "true if unset".
-3. **Experiments on a schedule**, each with the annotation:
+### 2. The switch
 
-   **Write `chaos/pod-kill.yaml`**
-   ```yaml
-   # chaos/pod-kill.yaml
-   apiVersion: chaos-mesh.org/v1alpha1
-   kind: Schedule
-   metadata:
-     name: pod-kill
-     namespace: chaos
-     annotations:
-       experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
-   spec:
-     schedule: "@every 5m"
-     type: PodChaos
-     historyLimit: 5
-     concurrencyPolicy: Forbid
-     podChaos:
-       action: pod-kill
-       mode: one
-       selector:
-         namespaces: [otel-demo]
-   ```
+Experiments get their own folder and Kustomization, so one variable reaches
+all of them, and so they apply only after the CRDs exist.
+`postBuild.substitute` replaces `${CHAOS_PAUSED}` in every file under
+`./chaos` before applying; `${CHAOS_PAUSED:=true}` means "true if unset".
 
-   Plus the namespace, and the latency experiment from above on a schedule:
+**Write `clusters/dev/chaos.yaml`**
+```yaml
+# clusters/dev/chaos.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: chaos
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-local
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./chaos
+  prune: true
+  postBuild:
+    substitute:
+      CHAOS_PAUSED: "true"
+```
 
-   **Write `chaos/namespace.yaml`**
-   ```yaml
-   # chaos/namespace.yaml
-   apiVersion: v1
-   kind: Namespace
-   metadata:
-     name: chaos
-   ```
+### 3. Experiments on a schedule
 
-   **Write `chaos/latency.yaml`**
-   ```yaml
-   # chaos/latency.yaml
-   apiVersion: chaos-mesh.org/v1alpha1
-   kind: Schedule
-   metadata:
-     name: cart-latency
-     namespace: chaos
-     annotations:
-       experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
-   spec:
-     schedule: "@every 15m"
-     type: NetworkChaos
-     historyLimit: 5
-     concurrencyPolicy: Forbid
-     networkChaos:
-       action: delay
-       mode: all
-       selector:
-         namespaces: [otel-demo]
-         labelSelectors:
-           app.kubernetes.io/component: cart
-       delay:
-         latency: 200ms
-       duration: 2m
-   ```
+Each carries the pause annotation:
 
-4. Commit, push, and look:
-   ```sh
-   git add clusters/ infrastructure/ chaos/
-   git commit -m "Chaos Mesh and paused experiments"
-   git push
-   flux --context k3d-dev reconcile kustomization flux-system --with-source
-   kubectl --context k3d-dev get schedules -n chaos
-   ```
-   They're there, paused.
-   sofka / k9s: `:schedules -n chaos`.
+**Write `chaos/namespace.yaml`**
+```yaml
+# chaos/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chaos
+```
+
+**Write `chaos/pod-kill.yaml`**
+```yaml
+# chaos/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  schedule: "@every 5m"
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces: [otel-demo]
+```
+
+**Write `chaos/latency.yaml`**
+```yaml
+# chaos/latency.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: cart-latency
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  schedule: "@every 15m"
+  type: NetworkChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  networkChaos:
+    action: delay
+    mode: all
+    selector:
+      namespaces: [otel-demo]
+      labelSelectors:
+        app.kubernetes.io/component: cart
+    delay:
+      latency: 200ms
+    duration: 2m
+```
+
+### 4. Push and look
+
+```sh
+git pull
+git add clusters/ infrastructure/ chaos/
+git commit -m "Chaos Mesh and paused experiments"
+git push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get schedules -n chaos
+```
+
+They're there, paused. The dashboard is at <https://chaos.kube.internal>.
+
+sofka / k9s: `:schedules -n chaos`
 
 > [!WARNING]
 > Don't `kubectl apply` files from `chaos/` by hand. Without Flux, the
 > annotation is the literal string `${CHAOS_PAUSED:=true}`, which isn't
 > `"true"`, so the Schedule runs. To check one is valid, use
 > `kubectl --context k3d-dev apply --dry-run=server -f chaos/pod-kill.yaml`.
+
+## Iterate
+
+Every change is a commit; the last step pauses everything again. New or
+changed lines sit between `# ── new ──` and `# ── end new ──`.
+
+What broke, in order:
+
+```sh
+kubectl --context k3d-dev get events -n otel-demo --sort-by=.lastTimestamp
+```
+
+sofka `T` on a Deployment; k9s `:events -n otel-demo`.
+
+> [!TIP]
+> A sofka extra ([lesson 0](00-tools.md)), and where its timeline earns its
+> keep. Open `:workloads otel-demo` before you flip the switch: `ctrl-z` keeps
+> only what's hurt right now, `T` on a Deployment says when it lost pods and
+> when it had them back, and `:bundle` on it writes the incident up for you.
+
+### 1. Flip the switch
+
+**Replace `clusters/dev/chaos.yaml`**
+```yaml
+# clusters/dev/chaos.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: chaos
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-local
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./chaos
+  prune: true
+  postBuild:
+    substitute:
+      # ── new ──
+      CHAOS_PAUSED: "false"
+      # ── end new ──
+```
+
+And every minute rather than five, while you watch:
+
+**Replace `chaos/pod-kill.yaml`**
+```yaml
+# chaos/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  # ── new ──
+  schedule: "@every 1m"
+  # ── end new ──
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces: [otel-demo]
+```
+
+```sh
+git pull
+git add clusters/dev/chaos.yaml chaos/pod-kill.yaml
+git commit -m "Chaos on, pod-kill every minute"
+git push
+flux --context k3d-dev reconcile kustomization chaos --with-source
+kubectl --context k3d-dev get pods -n otel-demo -w
+```
+
+A random demo pod dies each minute, and each run leaves a PodChaos in
+`chaos`: `kubectl --context k3d-dev get podchaos -n chaos`. Which ones does the
+shop notice?
+
+### 2. Half the namespace
+
+**Replace `chaos/pod-kill.yaml`**
+```yaml
+# chaos/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  schedule: "@every 1m"
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    # ── new ──
+    action: pod-kill
+    mode: fixed-percent
+    value: "50"
+    # ── end new ──
+    selector:
+      namespaces: [otel-demo]
+```
+
+```sh
+git pull
+git add chaos/pod-kill.yaml
+git commit -m "pod-kill: half the namespace"
+git push
+flux --context k3d-dev reconcile kustomization chaos --with-source
+kubectl --context k3d-dev get pods -n otel-demo -w
+```
+
+### 3. Kill a container, not the pod
+
+**Replace `chaos/pod-kill.yaml`**
+```yaml
+# chaos/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  schedule: "@every 1m"
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    # ── new ──
+    action: container-kill
+    mode: one
+    containerNames: [cart]
+    # ── end new ──
+    selector:
+      namespaces: [otel-demo]
+      # ── new ──
+      labelSelectors:
+        app.kubernetes.io/component: cart
+      # ── end new ──
+```
+
+```sh
+git pull
+git add chaos/pod-kill.yaml
+git commit -m "container-kill on cart"
+git push
+flux --context k3d-dev reconcile kustomization chaos --with-source
+kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart -w
+```
+
+`RESTARTS` goes up; the pod survives.
+
+### 4. 200ms latency on cart, now
+
+The latency Schedule runs every 15 minutes. For one run now, a one-off in the
+same folder, under the same switch:
+
+**Write `chaos/latency-now.yaml`**
+```yaml
+# chaos/latency-now.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: cart-latency-now
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [otel-demo]
+    labelSelectors:
+      app.kubernetes.io/component: cart
+  delay:
+    latency: 200ms
+  duration: 2m
+```
+
+```sh
+git pull
+git add chaos/latency-now.yaml
+git commit -m "Latency on cart, once"
+git push
+flux --context k3d-dev reconcile kustomization chaos --with-source
+kubectl --context k3d-dev -n chaos describe networkchaos cart-latency-now
+```
+
+Slow spans in Jaeger for the next two minutes. A one-off runs once, so remove
+it from Git once it's done:
+
+```sh
+git pull
+git rm chaos/latency-now.yaml
+git commit -m "Drop the one-off latency"
+git push
+flux --context k3d-dev reconcile kustomization chaos --with-source
+```
+
+### 5. Pause everything
+
+Back to the install's experiments, paused:
+
+**Replace `chaos/pod-kill.yaml`**
+```yaml
+# chaos/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  # ── new ──
+  schedule: "@every 5m"
+  # ── end new ──
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    # ── new ──
+    action: pod-kill
+    mode: one
+    # ── end new ──
+    selector:
+      namespaces: [otel-demo]
+```
+
+**Replace `clusters/dev/chaos.yaml`**
+```yaml
+# clusters/dev/chaos.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: chaos
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-local
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./chaos
+  prune: true
+  postBuild:
+    substitute:
+      # ── new ──
+      CHAOS_PAUSED: "true"
+      # ── end new ──
+```
+
+```sh
+git pull
+git add clusters/dev/chaos.yaml chaos/pod-kill.yaml
+git commit -m "Chaos paused"
+git push
+flux --context k3d-dev reconcile kustomization chaos --with-source
+kubectl --context k3d-dev get schedules -n chaos
+```
 
 ## Exercises
 

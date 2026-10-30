@@ -46,307 +46,17 @@ workers, with the scaler authenticating through an IAM role
 **On your machine**: `kubectl`, `helm`, `flux`, and `sofka`
 or `k9s` ([lesson 0](00-tools.md)).
 
-## Install by hand
+## By hand, for comparison
 
-### 1. KEDA
+> [!NOTE]
+> Read this, don't run it. Flux does the same from Git below.
 
+**Example only: don't run it**
 ```sh
 helm --kube-context k3d-dev upgrade --install keda keda --repo https://kedacore.github.io/charts \
   --version 2.21.0 -n keda --create-namespace
+kubectl --context k3d-dev apply -f scaledobject.yaml
 ```
-
-KEDA's defaults are fine.
-
-```sh
-kubectl --context k3d-dev get pods -n keda
-```
-
-The operator, the metrics apiserver and the admission webhooks.
-
-sofka / k9s: `:pods -n keda`
-
-### 2. Find the consumer
-
-Its replica count, then the topic's partitions. The Kafka tools live in
-`/opt/kafka/bin`, which isn't on the image's PATH:
-
-```sh
-kubectl --context k3d-dev get deploy accounting -n otel-demo
-kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
-  /opt/kafka/bin/kafka-topics.sh --describe --topic orders --bootstrap-server localhost:9092
-kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
-  /opt/kafka/bin/kafka-consumer-groups.sh --list --bootstrap-server localhost:9092
-```
-
-sofka / k9s: `:deploy -n otel-demo`, then `:pods -n otel-demo`, `s` on
-`kafka`.
-
-Partitions are the ceiling: one consumer per partition at most.
-
-### 3. The ScaledObject
-
-**Write `scratch/11/scaledobject.yaml`**
-```yaml
-# scratch/11/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  minReplicaCount: 1
-  maxReplicaCount: 3
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        lagThreshold: "10"
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-```
-
-```sh
-kubectl --context k3d-dev get scaledobjects -n otel-demo -w
-kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
-```
-
-The ScaledObject goes `READY True`, then `keda-hpa-accounting` appears,
-created for you.
-
-sofka / k9s: `:scaledobjects -n otel-demo`, then `:hpa -n otel-demo`. sofka
-extra ([lesson 0](00-tools.md)): `X` on the ScaledObject if it isn't ready.
-
-### 4. Iterate
-
-Scaling as it happens, and what the operator thinks of it:
-
-```sh
-kubectl --context k3d-dev -n otel-demo get deploy accounting -w
-kubectl --context k3d-dev -n keda logs deploy/keda-operator -f
-```
-
-sofka / k9s: `:deploy -n otel-demo`; `:pods -n keda`, `l` on `keda-operator`.
-sofka extras: `T` on `accounting` timestamps each replica change, and
-`ctrl-z` in the logs leaves only the errors.
-
-| Try | Then look at |
-| --- | --- |
-| Raise the users at `/loadgen/`, or turn on `kafkaQueueProblems` in `/feature/` | `kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w`: the current value climbs, and `accounting` scales out |
-| Drop the load the same way | Scale-in after `cooldownPeriod` and the HPA's own stabilisation |
-
-The rest edit `scratch/11/scaledobject.yaml`, each with the load up. New or
-changed lines sit between `# ── new ──` and `# ── end new ──`.
-
-#### 1. A lower lag threshold
-
-**Replace `scratch/11/scaledobject.yaml`**
-```yaml
-# scratch/11/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  minReplicaCount: 1
-  maxReplicaCount: 3
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        # ── new ──
-        lagThreshold: "2"
-        # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
-```
-
-It scales out much sooner. Put it back:
-
-**Replace `scratch/11/scaledobject.yaml`**
-```yaml
-# scratch/11/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  minReplicaCount: 1
-  maxReplicaCount: 3
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        # ── new ──
-        lagThreshold: "10"
-        # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-```
-
-#### 2. More consumers than partitions
-
-Above the partition count from step 2:
-
-**Replace `scratch/11/scaledobject.yaml`**
-```yaml
-# scratch/11/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  minReplicaCount: 1
-  # ── new ──
-  maxReplicaCount: 6
-  # ── end new ──
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        lagThreshold: "10"
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-kubectl --context k3d-dev -n otel-demo get deploy accounting -w
-kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
-  /opt/kafka/bin/kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
-```
-
-The extra consumers sit idle, with no partition next to them, and lag doesn't
-fall faster. Put it back:
-
-**Replace `scratch/11/scaledobject.yaml`**
-```yaml
-# scratch/11/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  minReplicaCount: 1
-  # ── new ──
-  maxReplicaCount: 3
-  # ── end new ──
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        lagThreshold: "10"
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-```
-
-#### 3. Scale to zero
-
-**Replace `scratch/11/scaledobject.yaml`**
-```yaml
-# scratch/11/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  # ── new ──
-  minReplicaCount: 0
-  # ── end new ──
-  maxReplicaCount: 3
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        lagThreshold: "10"
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-kubectl --context k3d-dev -n otel-demo get deploy accounting -w
-```
-
-It scales to zero when idle. Work out what happens to orders meanwhile. Put
-it back:
-
-**Replace `scratch/11/scaledobject.yaml`**
-```yaml
-# scratch/11/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  # ── new ──
-  minReplicaCount: 1
-  # ── end new ──
-  maxReplicaCount: 3
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        lagThreshold: "10"
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-```
-
-### 5. Clean up
-
-```sh
-kubectl --context k3d-dev delete -f scratch/11/scaledobject.yaml
-helm --kube-context k3d-dev uninstall keda -n keda
-```
-
-Deleting the ScaledObject leaves `accounting` at whatever replica count it had.
 
 ## Install with Flux
 
@@ -357,7 +67,13 @@ Deleting the ScaledObject leaves `accounting` at whatever replica count it had.
 | HelmRelease | `keda` | `infrastructure/base/keda/release.yaml` |
 | ScaledObject | `otel-demo/accounting` | `apps/base/otel-demo/scaledobject.yaml` |
 
-No values ConfigMaps: defaults.
+No values ConfigMaps: KEDA's defaults are fine.
+
+### 1. KEDA
+
+```sh
+mkdir -p infrastructure/base/keda
+```
 
 **Write `infrastructure/base/keda/namespace.yaml`**
 ```yaml
@@ -400,7 +116,34 @@ spec:
         name: kedacore
 ```
 
-The ScaledObject, unchanged from `scratch/11/`:
+Push it first: `apps-base` can't apply a ScaledObject until KEDA's CRDs
+exist, and nothing else in `apps-base` applies meanwhile.
+
+```sh
+git pull
+git add infrastructure/
+git commit -m "KEDA with Flux"
+git push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get helmreleases -n keda -w
+```
+
+### 2. The consumer and its topic
+
+The Kafka tools live in `/opt/kafka/bin`, which isn't on the image's PATH:
+
+```sh
+kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
+  /opt/kafka/bin/kafka-topics.sh --describe --topic orders --bootstrap-server localhost:9092
+kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
+  /opt/kafka/bin/kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
+```
+
+Note the partition count; step 2 below goes past it.
+
+sofka / k9s: `:pods -n otel-demo`, `s` on `kafka`.
+
+### 3. The ScaledObject
 
 **Write `apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
@@ -425,26 +168,258 @@ spec:
         lagThreshold: "10"
 ```
 
-Push KEDA first and wait for `Ready`: `apps-base` can't apply the
-ScaledObject until KEDA's CRDs exist, and nothing else in `apps-base` applies
-meanwhile.
-
 ```sh
-git add infrastructure/
-git commit -m "KEDA with Flux"
-git push
-flux --context k3d-dev reconcile kustomization flux-system --with-source
-kubectl --context k3d-dev get helmreleases -n keda -w
-```
-
-Then the ScaledObject:
-
-```sh
-git add apps/
+git pull
+git add apps/base/otel-demo/scaledobject.yaml
 git commit -m "Scale accounting on Kafka lag"
 git push
-flux --context k3d-dev reconcile kustomization flux-system --with-source
-kubectl --context k3d-dev get scaledobjects -n otel-demo -w
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev get scaledobjects,hpa -n otel-demo
+```
+
+KEDA created `keda-hpa-accounting` from it.
+
+sofka / k9s: `:scaledobjects -n otel-demo`, then `:hpa -n otel-demo`. sofka
+extra ([lesson 0](00-tools.md)): `X` on the ScaledObject if it isn't ready.
+
+## Iterate
+
+Keep these running, each in its own terminal:
+
+```sh
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w   # terminal 1
+kubectl --context k3d-dev -n keda logs deploy/keda-operator -f          # terminal 2
+```
+
+sofka / k9s: `:hpa -n otel-demo`; `:pods -n keda`, `l` on `keda-operator`.
+sofka extras: `T` on `accounting` timestamps each replica change, and
+`ctrl-z` in the logs leaves only the errors.
+
+| Try | Then look at |
+| --- | --- |
+| Raise the users at `/loadgen/`, or turn on `kafkaQueueProblems` in `/feature/` | The HPA's current value climbs past the target, and `accounting` scales out |
+| Drop the load the same way | Scale-in after `cooldownPeriod` plus the HPA's own stabilisation |
+
+Each step below changes the ScaledObject in Git, with the load up. New or
+changed lines sit between `# ── new ──` and `# ── end new ──`.
+
+### 1. A lower lag threshold
+
+**Replace `apps/base/otel-demo/scaledobject.yaml`**
+```yaml
+# apps/base/otel-demo/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: accounting
+  namespace: otel-demo
+spec:
+  scaleTargetRef:
+    name: accounting
+  minReplicaCount: 1
+  maxReplicaCount: 3
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.otel-demo.svc:9092
+        consumerGroup: accounting
+        topic: orders
+        # ── new ──
+        lagThreshold: "2"
+        # ── end new ──
+```
+
+```sh
+git pull
+git add apps/base/otel-demo/scaledobject.yaml
+git commit -m "accounting: lag threshold 2"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
+```
+
+It scales out much sooner. Put it back:
+
+**Replace `apps/base/otel-demo/scaledobject.yaml`**
+```yaml
+# apps/base/otel-demo/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: accounting
+  namespace: otel-demo
+spec:
+  scaleTargetRef:
+    name: accounting
+  minReplicaCount: 1
+  maxReplicaCount: 3
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.otel-demo.svc:9092
+        consumerGroup: accounting
+        topic: orders
+        # ── new ──
+        lagThreshold: "10"
+        # ── end new ──
+```
+
+```sh
+git pull
+git add apps/base/otel-demo/scaledobject.yaml
+git commit -m "accounting: lag threshold 10"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
+```
+
+### 2. More consumers than partitions
+
+**Replace `apps/base/otel-demo/scaledobject.yaml`**
+```yaml
+# apps/base/otel-demo/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: accounting
+  namespace: otel-demo
+spec:
+  scaleTargetRef:
+    name: accounting
+  minReplicaCount: 1
+  # ── new ──
+  maxReplicaCount: 6
+  # ── end new ──
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.otel-demo.svc:9092
+        consumerGroup: accounting
+        topic: orders
+        lagThreshold: "10"
+```
+
+```sh
+git pull
+git add apps/base/otel-demo/scaledobject.yaml
+git commit -m "accounting: up to 6"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
+  /opt/kafka/bin/kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
+```
+
+Consumers past the partition count get no partition, and lag doesn't fall
+faster. Put it back:
+
+**Replace `apps/base/otel-demo/scaledobject.yaml`**
+```yaml
+# apps/base/otel-demo/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: accounting
+  namespace: otel-demo
+spec:
+  scaleTargetRef:
+    name: accounting
+  minReplicaCount: 1
+  # ── new ──
+  maxReplicaCount: 3
+  # ── end new ──
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.otel-demo.svc:9092
+        consumerGroup: accounting
+        topic: orders
+        lagThreshold: "10"
+```
+
+```sh
+git pull
+git add apps/base/otel-demo/scaledobject.yaml
+git commit -m "accounting: up to 3"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
+```
+
+### 3. Scale to zero
+
+**Replace `apps/base/otel-demo/scaledobject.yaml`**
+```yaml
+# apps/base/otel-demo/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: accounting
+  namespace: otel-demo
+spec:
+  scaleTargetRef:
+    name: accounting
+  # ── new ──
+  minReplicaCount: 0
+  # ── end new ──
+  maxReplicaCount: 3
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.otel-demo.svc:9092
+        consumerGroup: accounting
+        topic: orders
+        lagThreshold: "10"
+```
+
+```sh
+git pull
+git add apps/base/otel-demo/scaledobject.yaml
+git commit -m "accounting: scale to zero"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get deploy accounting -w
+```
+
+Zero when idle; KEDA, not the HPA, takes it from 0 to 1. Work out what happens
+to orders meanwhile. Put it back:
+
+**Replace `apps/base/otel-demo/scaledobject.yaml`**
+```yaml
+# apps/base/otel-demo/scaledobject.yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: accounting
+  namespace: otel-demo
+spec:
+  scaleTargetRef:
+    name: accounting
+  # ── new ──
+  minReplicaCount: 1
+  # ── end new ──
+  maxReplicaCount: 3
+  cooldownPeriod: 60
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: kafka.otel-demo.svc:9092
+        consumerGroup: accounting
+        topic: orders
+        lagThreshold: "10"
+```
+
+```sh
+git pull
+git add apps/base/otel-demo/scaledobject.yaml
+git commit -m "accounting: at least 1"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
 ## Exercises

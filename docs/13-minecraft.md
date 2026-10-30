@@ -49,230 +49,16 @@ service.
 | `bpftrace`, BCC tools in `/usr/share/bcc/tools/` | Profiling. The dotfiles `bpf` step, then a reboot. |
 | A Minecraft Java client | Joining |
 
-## Install by hand
+## By hand, for comparison
 
-### 1. Values
+> [!NOTE]
+> Read this, don't run it. Flux does the same from Git below.
 
-**Write `scratch/13/values-base.yaml`**
-```yaml
-# scratch/13/values-base.yaml
-minecraftServer:
-  eula: "TRUE"          # you accept the Minecraft EULA
-  type: VANILLA
-  version: "26.3"
-  memory: 2048M
-  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
-resources:
-  requests: {cpu: 500m, memory: 2560Mi}
-  limits: {memory: 3Gi}
-persistence:
-  dataDir:
-    enabled: true
-    Size: 5Gi           # capital S in this chart
-```
-
-**Write `scratch/13/values-local.yaml`**
-```yaml
-# scratch/13/values-local.yaml
-minecraftServer:
-  serviceType: NodePort
-  nodePort: 30000
-```
-
-### 2. Install and join
-
+**Example only: don't run it**
 ```sh
 helm --kube-context k3d-dev upgrade --install minecraft minecraft \
   --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
-  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
-```
-
-```sh
-kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
-```
-
-The first start downloads the server jar, so pods need working external DNS.
-When it logs `Done`, join from a client at this machine's LAN address, port
-25565.
-
-sofka / k9s: `:pods -n minecraft`, `l`
-
-### 3. The console
-
-```sh
-kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli list
-kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
-```
-
-sofka / k9s: `s` on the pod, then `rcon-cli list` and `rcon-cli tps`.
-
-### 4. Iterate
-
-Memory against the limit, and the world on its PVC:
-
-```sh
-kubectl --context k3d-dev -n minecraft top pod
-kubectl --context k3d-dev get pvc -n minecraft
-```
-
-sofka / k9s: `d` on the pod for `OOMKilled`; `:pvc -n minecraft`. They differ
-on memory:
-
-- sofka: `⏎` on the pod shows memory as a share of request and limit, with a
-  five-minute trend; `X` says `OOMKilled`; `x` on the PVC browses its files
-  through the server pod ([lesson 0](00-tools.md)).
-- k9s: the `%MEM/L` column in `:pods -n minecraft`.
-
-The first two steps edit `scratch/13/values-base.yaml` and put it back. New
-or changed lines sit between `# ── new ──` and `# ── end new ──`.
-
-#### 1. A smaller heap
-
-**Replace `scratch/13/values-base.yaml`**
-```yaml
-# scratch/13/values-base.yaml
-minecraftServer:
-  eula: "TRUE"          # you accept the Minecraft EULA
-  type: VANILLA
-  version: "26.3"
-  # ── new ──
-  memory: 1024M
-  # ── end new ──
-  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
-resources:
-  requests: {cpu: 500m, memory: 2560Mi}
-  limits: {memory: 3Gi}
-persistence:
-  dataDir:
-    enabled: true
-    Size: 5Gi           # capital S in this chart
-```
-
-```sh
-helm --kube-context k3d-dev upgrade --install minecraft minecraft \
-  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
-  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
-kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
-kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
-```
-
-Compare the startup time in the logs, and `tps` with players on. Put it back:
-
-**Replace `scratch/13/values-base.yaml`**
-```yaml
-# scratch/13/values-base.yaml
-minecraftServer:
-  eula: "TRUE"          # you accept the Minecraft EULA
-  type: VANILLA
-  version: "26.3"
-  # ── new ──
-  memory: 2048M
-  # ── end new ──
-  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
-resources:
-  requests: {cpu: 500m, memory: 2560Mi}
-  limits: {memory: 3Gi}
-persistence:
-  dataDir:
-    enabled: true
-    Size: 5Gi           # capital S in this chart
-```
-
-```sh
-helm --kube-context k3d-dev upgrade --install minecraft minecraft \
-  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
-  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
-```
-
-#### 2. A limit below heap plus overhead
-
-**Replace `scratch/13/values-base.yaml`**
-```yaml
-# scratch/13/values-base.yaml
-minecraftServer:
-  eula: "TRUE"          # you accept the Minecraft EULA
-  type: VANILLA
-  version: "26.3"
-  memory: 2048M
-  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
-resources:
-  requests: {cpu: 500m, memory: 2560Mi}
-  # ── new ──
-  limits: {memory: 2304Mi}
-  # ── end new ──
-persistence:
-  dataDir:
-    enabled: true
-    Size: 5Gi           # capital S in this chart
-```
-
-```sh
-helm --kube-context k3d-dev upgrade --install minecraft minecraft \
-  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
-  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
-kubectl --context k3d-dev -n minecraft get pods -w
-kubectl --context k3d-dev -n minecraft describe pods -l app=minecraft
-```
-
-Under load it's OOM killed: `describe` shows `OOMKilled` under `Last State`.
-Put it back:
-
-**Replace `scratch/13/values-base.yaml`**
-```yaml
-# scratch/13/values-base.yaml
-minecraftServer:
-  eula: "TRUE"          # you accept the Minecraft EULA
-  type: VANILLA
-  version: "26.3"
-  memory: 2048M
-  jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
-resources:
-  requests: {cpu: 500m, memory: 2560Mi}
-  # ── new ──
-  limits: {memory: 3Gi}
-  # ── end new ──
-persistence:
-  dataDir:
-    enabled: true
-    Size: 5Gi           # capital S in this chart
-```
-
-```sh
-helm --kube-context k3d-dev upgrade --install minecraft minecraft \
-  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
-  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
-```
-
-#### 3. Delete the pod
-
-```sh
-kubectl --context k3d-dev -n minecraft delete pods -l app=minecraft
-kubectl --context k3d-dev -n minecraft get pods -w
-kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
-```
-
-The Deployment makes a new pod, and the world survives on the PVC: rejoin
-and it's as you left it.
-
-#### 4. Uninstall, then reinstall
-
-```sh
-helm --kube-context k3d-dev uninstall minecraft -n minecraft
-kubectl --context k3d-dev get pvc,pv -A | grep minecraft
-helm --kube-context k3d-dev upgrade --install minecraft minecraft \
-  --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
-  -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
-kubectl --context k3d-dev get pvc -n minecraft
-```
-
-Does the world survive? The PVC's age, and the PV's reclaim policy in
-`kubectl --context k3d-dev get pv`, tell you.
-
-### 5. Clean up
-
-```sh
-helm --kube-context k3d-dev uninstall minecraft -n minecraft
-kubectl --context k3d-dev delete namespace minecraft   # deletes the world
+  -n minecraft --create-namespace -f values-base.yaml -f values-local.yaml
 ```
 
 ## Install with Flux
@@ -285,8 +71,11 @@ kubectl --context k3d-dev delete namespace minecraft   # deletes the world
 | ConfigMap | `minecraft-values-base` | `apps/base/minecraft/values.yaml` |
 | ConfigMap | `minecraft-values-local` | `apps/local/minecraft/values.yaml` |
 
-The ConfigMaps hold the two scratch files unchanged: the NodePort is local
-because the port mapping is k3d's.
+The NodePort is local because the port mapping is k3d's.
+
+```sh
+mkdir -p apps/base/minecraft apps/local/minecraft
+```
 
 **Write `apps/base/minecraft/namespace.yaml`**
 ```yaml
@@ -377,6 +166,234 @@ data:
       serviceType: NodePort
       nodePort: 30000
 ```
+
+```sh
+git pull
+git add apps/
+git commit -m "Minecraft"
+git push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
+```
+
+The first start downloads the server jar, so pods need working external DNS.
+When it logs `Done`, join from a client at this machine's LAN address, port
+25565.
+
+sofka / k9s: `:pods -n minecraft`, `l`
+
+The console:
+
+```sh
+kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli list
+kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
+```
+
+sofka / k9s: `s` on the pod, then `rcon-cli list` and `rcon-cli tps`.
+
+## Iterate
+
+Memory against the limit, and the world on its PVC:
+
+```sh
+kubectl --context k3d-dev -n minecraft top pod
+kubectl --context k3d-dev get pvc -n minecraft
+```
+
+sofka / k9s: `d` on the pod for `OOMKilled`; `:pvc -n minecraft`. They differ
+on memory:
+
+- sofka: `⏎` on the pod shows memory as a share of request and limit, with a
+  five-minute trend; `X` says `OOMKilled`; `x` on the PVC browses its files
+  through the server pod ([lesson 0](00-tools.md)).
+- k9s: the `%MEM/L` column in `:pods -n minecraft`.
+
+New or changed lines sit between `# ── new ──` and `# ── end new ──`.
+
+### 1. A smaller heap
+
+**Replace `apps/base/minecraft/values.yaml`**
+```yaml
+# apps/base/minecraft/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minecraft-values-base
+  namespace: minecraft
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    minecraftServer:
+      eula: "TRUE"          # you accept the Minecraft EULA
+      type: VANILLA
+      version: "26.3"
+      # ── new ──
+      memory: 1024M
+      # ── end new ──
+      jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+    resources:
+      requests: {cpu: 500m, memory: 2560Mi}
+      limits: {memory: 3Gi}
+    persistence:
+      dataDir:
+        enabled: true
+        Size: 5Gi           # capital S in this chart
+```
+
+```sh
+git pull
+git add apps/base/minecraft/values.yaml
+git commit -m "Minecraft: 1G heap"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
+kubectl --context k3d-dev -n minecraft exec -it deploy/minecraft -- rcon-cli tps
+```
+
+Compare the startup time in the logs, and `tps` with players on. Put it back:
+
+**Replace `apps/base/minecraft/values.yaml`**
+```yaml
+# apps/base/minecraft/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minecraft-values-base
+  namespace: minecraft
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    minecraftServer:
+      eula: "TRUE"          # you accept the Minecraft EULA
+      type: VANILLA
+      version: "26.3"
+      # ── new ──
+      memory: 2048M
+      # ── end new ──
+      jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+    resources:
+      requests: {cpu: 500m, memory: 2560Mi}
+      limits: {memory: 3Gi}
+    persistence:
+      dataDir:
+        enabled: true
+        Size: 5Gi           # capital S in this chart
+```
+
+```sh
+git pull
+git add apps/base/minecraft/values.yaml
+git commit -m "Minecraft: 2G heap"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n minecraft get pods
+```
+
+### 2. A limit below heap plus overhead
+
+**Replace `apps/base/minecraft/values.yaml`**
+```yaml
+# apps/base/minecraft/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minecraft-values-base
+  namespace: minecraft
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    minecraftServer:
+      eula: "TRUE"          # you accept the Minecraft EULA
+      type: VANILLA
+      version: "26.3"
+      memory: 2048M
+      jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+    resources:
+      requests: {cpu: 500m, memory: 2560Mi}
+      # ── new ──
+      limits: {memory: 2304Mi}
+      # ── end new ──
+    persistence:
+      dataDir:
+        enabled: true
+        Size: 5Gi           # capital S in this chart
+```
+
+```sh
+git pull
+git add apps/base/minecraft/values.yaml
+git commit -m "Minecraft: 2304Mi limit"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n minecraft get pods -w
+```
+
+Under load it's OOM killed: `kubectl --context k3d-dev -n minecraft describe
+pods -l app=minecraft` shows `OOMKilled` under `Last State`. Profiling step 6
+watches the same kill from the kernel's side; do it now if you want. Put it
+back:
+
+**Replace `apps/base/minecraft/values.yaml`**
+```yaml
+# apps/base/minecraft/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minecraft-values-base
+  namespace: minecraft
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    minecraftServer:
+      eula: "TRUE"          # you accept the Minecraft EULA
+      type: VANILLA
+      version: "26.3"
+      memory: 2048M
+      jvmXXOpts: "-XX:+PreserveFramePointer"   # keeps stacks walkable for BPF
+    resources:
+      requests: {cpu: 500m, memory: 2560Mi}
+      # ── new ──
+      limits: {memory: 3Gi}
+      # ── end new ──
+    persistence:
+      dataDir:
+        enabled: true
+        Size: 5Gi           # capital S in this chart
+```
+
+```sh
+git pull
+git add apps/base/minecraft/values.yaml
+git commit -m "Minecraft: 3Gi limit"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n minecraft get pods
+```
+
+### 3. Prune the release, then bring it back
+
+Take the HelmRelease out of Git and put it back, leaving the namespace:
+
+```sh
+git pull
+git rm apps/base/minecraft/release.yaml
+git commit -m "Minecraft: drop the release"
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev get pvc,pv -A | grep minecraft
+git revert --no-edit HEAD
+git push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev get pvc -n minecraft
+```
+
+Does the world survive? The PVC's age, and the PV's reclaim policy in
+`kubectl --context k3d-dev get pv`, tell you. Pruning a release is a
+`helm uninstall`.
 
 ## Profiling
 

@@ -46,17 +46,32 @@ or a pipeline running the same `skopeo copy`.
 ## Requirements
 
 **In the cluster**: the registry container (dotfiles creates it with the
-cluster). podinfo from lesson 2, for the Flux part.
+cluster). podinfo from lesson 2.
 
 **On your machine**: `skopeo` (Bazzite base image; `brew install skopeo` on
 macOS), `curl`, `jq`, `kubectl`, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
 
-## Install by hand
+## By hand, for comparison
 
-Nothing to install: the registry is already there. This part is about using
-it.
+> [!NOTE]
+> Read this, don't run it. Below, podinfo's values in Git point at the mirror.
+
+Nothing to install: the registry is already there. By hand you'd point a
+workload at it with `--set`:
+
+**Example only: don't run it**
+```sh
+helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/podinfo \
+  -n podinfo --reuse-values --set image.repository=k3d-registry.localhost:5000/podinfo
+```
+
+Flux would revert that at its next reconcile; the change belongs in Git.
+
+## Install with Flux
 
 ### 1. Mirror
+
+Pushing images is outside Kubernetes, so it stays a command:
 
 ```sh
 for t in 6.7.0 6.7.1; do
@@ -68,8 +83,6 @@ done
 
 `--all` copies every architecture, so the digest stays the same as upstream.
 
-### 2. Look
-
 ```sh
 curl -s localhost:5050/v2/_catalog | jq
 skopeo list-tags --tls-verify=false docker://localhost:5050/podinfo
@@ -79,168 +92,7 @@ skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050
 
 The two digests match: it's the same image.
 
-### 3. Pull it from a pod, by tag and by digest
-
-**Write `scratch/07/pod.yaml`**
-```yaml
-# scratch/07/pod.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: mirror-test
-  namespace: default
-spec:
-  containers:
-    - name: podinfo
-      image: k3d-registry.localhost:5000/podinfo:6.7.0
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/07/pod.yaml
-```
-
-```sh
-kubectl --context k3d-dev -n default get pod mirror-test \
-  -o jsonpath='{.status.containerStatuses[0].imageID}'
-```
-
-The digest it resolved. When a pull fails,
-`kubectl --context k3d-dev -n default describe pod mirror-test` has the
-reason under Events.
-
-sofka / k9s: `:pods -n default`, `d`, the `Image ID` line. sofka extra
-([lesson 0](00-tools.md)): `X` names `ErrImagePull` and the event behind it.
-
-### 4. Iterate
-
-Each step edits `scratch/07/pod.yaml` and re-creates the pod: a pod's spec
-can't be changed in place. New or changed lines sit between `# ── new ──` and
-`# ── end new ──`.
-
-#### 1. `localhost` from inside the cluster
-
-**Replace `scratch/07/pod.yaml`**
-```yaml
-# scratch/07/pod.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: mirror-test
-  namespace: default
-spec:
-  containers:
-    - name: podinfo
-      # ── new ──
-      image: localhost:5050/podinfo:6.7.0
-      # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev delete -f scratch/07/pod.yaml
-kubectl --context k3d-dev apply -f scratch/07/pod.yaml
-kubectl --context k3d-dev -n default describe pod mirror-test
-```
-
-`ErrImagePull`: inside the cluster, `localhost` is the node itself.
-
-#### 2. Pin by digest
-
-The digest from step 2, the same upstream and in the mirror:
-
-```sh
-skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0
-```
-
-**Replace `scratch/07/pod.yaml`**
-```yaml
-# scratch/07/pod.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: mirror-test
-  namespace: default
-spec:
-  containers:
-    - name: podinfo
-      # ── new ──
-      image: k3d-registry.localhost:5000/podinfo@sha256:d2b3cd93a48acdc91327533ce28fcb3169b2d9feaf73817dc2eb68858df64edb
-      # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev delete -f scratch/07/pod.yaml
-kubectl --context k3d-dev apply -f scratch/07/pod.yaml
-kubectl --context k3d-dev -n default get pod mirror-test \
-  -o jsonpath='{.status.containerStatuses[0].imageID}'
-```
-
-It works, and can never change under you.
-
-#### 3. Move a tag under a running pod
-
-Copy `6.7.1` over the `6.7.0` tag, and make the kubelet pull again rather than
-use the image it already has:
-
-```sh
-skopeo copy --all --dest-tls-verify=false \
-  docker://ghcr.io/stefanprodan/podinfo:6.7.1 \
-  docker://localhost:5050/podinfo:6.7.0
-```
-
-**Replace `scratch/07/pod.yaml`**
-```yaml
-# scratch/07/pod.yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: mirror-test
-  namespace: default
-spec:
-  containers:
-    - name: podinfo
-      # ── new ──
-      image: k3d-registry.localhost:5000/podinfo:6.7.0
-      imagePullPolicy: Always
-      # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev delete -f scratch/07/pod.yaml
-kubectl --context k3d-dev apply -f scratch/07/pod.yaml
-kubectl --context k3d-dev -n default get pod mirror-test \
-  -o jsonpath='{.status.containerStatuses[0].imageID}'
-```
-
-Same tag, different `Image ID`. That's what ECR's tag immutability prevents.
-Put `6.7.0` back from upstream:
-
-```sh
-skopeo copy --all --dest-tls-verify=false \
-  docker://ghcr.io/stefanprodan/podinfo:6.7.0 \
-  docker://localhost:5050/podinfo:6.7.0
-```
-
-#### 4. Copy one architecture only
-
-```sh
-skopeo copy --dest-tls-verify=false \
-  docker://ghcr.io/stefanprodan/podinfo:6.7.0 \
-  docker://localhost:5050/podinfo:6.7.0-single
-skopeo inspect --format '{{.Digest}}' docker://ghcr.io/stefanprodan/podinfo:6.7.0
-skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0-single
-```
-
-Different digests: without `--all`, only your architecture was copied.
-
-### 5. Clean up
-
-```sh
-kubectl --context k3d-dev delete -f scratch/07/pod.yaml
-```
-
-Leave the mirrored images; lesson 8 uses them.
-
-## Install with Flux
+### 2. podinfo from the mirror
 
 No new objects: podinfo's values change to pull from the mirror. The image
 location is local; on EKS the same keys would name your ECR repo.
@@ -270,24 +122,238 @@ data:
     # ── end new ──
 ```
 
-Commit, push, and check the image:
-
 ```sh
-git add apps/
+git add apps/local/podinfo/values.yaml
 git commit -m "podinfo from the local mirror"
 git push
-flux --context k3d-dev reconcile kustomization flux-system --with-source
-kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
 
-The local image.
+Each pod's `Image ID` is the digest it resolved. When a pull fails,
+`kubectl --context k3d-dev -n podinfo describe pod` has the reason under
+Events.
 
-sofka / k9s: `:deploy -n podinfo`, `y`
+sofka / k9s: `:pods -n podinfo`, `d`, the `Image ID` line. sofka extra
+([lesson 0](00-tools.md)): `X` names `ErrImagePull` and the event behind it.
+
+## Iterate
+
+Each step changes `apps/local/podinfo/values.yaml` and ends where it started:
+the mirror, tag `6.7.0`. New or changed lines sit between `# ── new ──` and
+`# ── end new ──`.
+
+### 1. `localhost` from inside the cluster
+
+**Replace `apps/local/podinfo/values.yaml`**
+```yaml
+# apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      # ── new ──
+      repository: localhost:5050/podinfo
+      # ── end new ──
+      tag: 6.7.0
+```
+
+```sh
+git add apps/local/podinfo/values.yaml
+git commit -m "podinfo: pull from localhost"
+git push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n podinfo get pods
+```
+
+The new pod is stuck in `ErrImagePull`: inside the cluster, `localhost` is the
+node itself. The old pods keep serving, because the rollout never got a new
+pod ready. Put it back:
+
+**Replace `apps/local/podinfo/values.yaml`**
+```yaml
+# apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      # ── new ──
+      repository: k3d-registry.localhost:5000/podinfo
+      # ── end new ──
+      tag: 6.7.0
+```
+
+```sh
+git add apps/local/podinfo/values.yaml
+git commit -m "podinfo: pull from the mirror"
+git push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n podinfo get pods
+```
+
+### 2. Pin by digest
+
+The digest from the mirror, the same as upstream:
+
+```sh
+skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0
+```
+
+The chart builds `repository:tag`, so the digest goes after the tag:
+
+**Replace `apps/local/podinfo/values.yaml`**
+```yaml
+# apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      # ── new ──
+      tag: 6.7.0@sha256:d2b3cd93a48acdc91327533ce28fcb3169b2d9feaf73817dc2eb68858df64edb
+      # ── end new ──
+```
+
+```sh
+git add apps/local/podinfo/values.yaml
+git commit -m "podinfo: pin by digest"
+git push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
+```
+
+It works, and can never change under you, whatever happens to the tag.
+
+### 3. Move a tag under running pods
+
+Back to the bare tag, pulled every time a pod starts:
+
+**Replace `apps/local/podinfo/values.yaml`**
+```yaml
+# apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      # ── new ──
+      tag: 6.7.0
+      pullPolicy: Always
+      # ── end new ──
+```
+
+```sh
+git add apps/local/podinfo/values.yaml
+git commit -m "podinfo: tag, always pull"
+git push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
+```
+
+Now copy `6.7.1` over the `6.7.0` tag and restart the pods:
+
+```sh
+skopeo copy --all --dest-tls-verify=false \
+  docker://ghcr.io/stefanprodan/podinfo:6.7.1 \
+  docker://localhost:5050/podinfo:6.7.0
+kubectl --context k3d-dev -n podinfo rollout restart deploy podinfo
+kubectl --context k3d-dev -n podinfo rollout status deploy podinfo
+kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
+```
+
+Same tag, same Git, different `Image ID`: Git no longer says what's running.
+That's what ECR's tag immutability prevents. Put `6.7.0` back from upstream,
+and the pull policy:
+
+```sh
+skopeo copy --all --dest-tls-verify=false \
+  docker://ghcr.io/stefanprodan/podinfo:6.7.0 \
+  docker://localhost:5050/podinfo:6.7.0
+kubectl --context k3d-dev -n podinfo rollout restart deploy podinfo
+kubectl --context k3d-dev -n podinfo rollout status deploy podinfo
+```
+
+The restart pulls the real `6.7.0` while `Always` is still set; with the
+default policy the nodes would keep the copy they cached. Then drop
+`pullPolicy`:
+
+**Replace `apps/local/podinfo/values.yaml`**
+```yaml
+# apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      tag: 6.7.0
+```
+
+```sh
+git add apps/local/podinfo/values.yaml
+git commit -m "podinfo: default pull policy"
+git push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n podinfo get pods
+```
+
+### 4. Copy one architecture only
+
+Registry only, nothing in Git:
+
+```sh
+skopeo copy --dest-tls-verify=false \
+  docker://ghcr.io/stefanprodan/podinfo:6.7.0 \
+  docker://localhost:5050/podinfo:6.7.0-single
+skopeo inspect --format '{{.Digest}}' docker://ghcr.io/stefanprodan/podinfo:6.7.0
+skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0-single
+```
+
+Different digests: without `--all`, only your architecture was copied.
 
 ## Exercises
 
 1. Mirror an image you'll need later (`registry.k8s.io/pause:3.10` for lesson
-   12) and use it from a pod.
+   12).
 2. Find a multi-arch image's manifest list:
    `skopeo inspect --raw docker://localhost:5050/podinfo:6.7.1 | jq`.
 3. Harder: run Zot as a HelmRelease (built-in auth, RBAC, scanning) as a
