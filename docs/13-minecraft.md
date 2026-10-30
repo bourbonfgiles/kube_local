@@ -58,7 +58,7 @@ service.
 ```sh
 helm --kube-context k3d-dev upgrade --install minecraft minecraft \
   --repo https://itzg.github.io/minecraft-server-charts/ --version 5.2.0 \
-  -n minecraft --create-namespace -f values-base.yaml -f values-local.yaml
+  -n minecraft --create-namespace -f values-base.yaml -f values-dev.yaml
 ```
 
 ## Install with Flux
@@ -69,12 +69,12 @@ helm --kube-context k3d-dev upgrade --install minecraft minecraft \
 | HelmRepository | `itzg` | `~/repos/personal/kube_local/apps/base/minecraft/source.yaml` |
 | HelmRelease | `minecraft` | `~/repos/personal/kube_local/apps/base/minecraft/release.yaml` |
 | ConfigMap | `minecraft-values-base` | `~/repos/personal/kube_local/apps/base/minecraft/values.yaml` |
-| ConfigMap | `minecraft-values-local` | `~/repos/personal/kube_local/apps/local/minecraft/values.yaml` |
+| ConfigMap | `minecraft-values-dev` | `~/repos/personal/kube_local/apps/dev/minecraft/values.yaml` |
 
 The NodePort is local because the port mapping is k3d's.
 
 ```sh
-mkdir -p ~/repos/personal/kube_local/apps/base/minecraft ~/repos/personal/kube_local/apps/local/minecraft
+mkdir -p ~/repos/personal/kube_local/apps/base/minecraft ~/repos/personal/kube_local/apps/dev/minecraft
 ```
 
 **Write `~/repos/personal/kube_local/apps/base/minecraft/namespace.yaml`**
@@ -120,7 +120,7 @@ spec:
     - kind: ConfigMap
       name: minecraft-values-base
     - kind: ConfigMap
-      name: minecraft-values-local
+      name: minecraft-values-${CLUSTER_NAME}
 ```
 
 **Write `~/repos/personal/kube_local/apps/base/minecraft/values.yaml`**
@@ -150,13 +150,13 @@ data:
         Size: 5Gi           # capital S in this chart
 ```
 
-**Write `~/repos/personal/kube_local/apps/local/minecraft/values.yaml`**
+**Write `~/repos/personal/kube_local/apps/dev/minecraft/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/minecraft/values.yaml
+# ~/repos/personal/kube_local/apps/dev/minecraft/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: minecraft-values-local
+  name: minecraft-values-dev
   namespace: minecraft
   labels:
     reconcile.fluxcd.io/watch: Enabled

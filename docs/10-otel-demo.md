@@ -74,8 +74,8 @@ kubectl --context k3d-dev apply -f route.yaml
 | HelmRepository | `open-telemetry` | `~/repos/personal/kube_local/apps/base/otel-demo/source.yaml` |
 | HelmRelease | `otel-demo` | `~/repos/personal/kube_local/apps/base/otel-demo/release.yaml` |
 | ConfigMap | `otel-demo-values-base` | `~/repos/personal/kube_local/apps/base/otel-demo/values.yaml` |
-| ConfigMap | `otel-demo-values-local` | `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml` |
-| HTTPRoute | `otel` | `~/repos/personal/kube_local/apps/local/otel-demo/route.yaml` |
+| ConfigMap | `otel-demo-values-dev` | `~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml` |
+| HTTPRoute | `otel` | `~/repos/personal/kube_local/apps/base/otel-demo/route.yaml` |
 
 ### 1. The demo
 
@@ -83,7 +83,7 @@ Values you'd keep anywhere (components off, resources) go in base; hostnames,
 root URLs and load in local. Both start empty: the chart's defaults.
 
 ```sh
-mkdir -p ~/repos/personal/kube_local/apps/base/otel-demo ~/repos/personal/kube_local/apps/local/otel-demo
+mkdir -p ~/repos/personal/kube_local/apps/base/otel-demo ~/repos/personal/kube_local/apps/dev/otel-demo
 ```
 
 **Write `~/repos/personal/kube_local/apps/base/otel-demo/namespace.yaml`**
@@ -129,7 +129,7 @@ spec:
     - kind: ConfigMap
       name: otel-demo-values-base
     - kind: ConfigMap
-      name: otel-demo-values-local
+      name: otel-demo-values-${CLUSTER_NAME}
 ```
 
 **Write `~/repos/personal/kube_local/apps/base/otel-demo/values.yaml`**
@@ -146,13 +146,13 @@ data:
   values.yaml: "{}"
 ```
 
-**Write `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml`**
+**Write `~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: otel-demo-values-local
+  name: otel-demo-values-dev
   namespace: otel-demo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -160,9 +160,9 @@ data:
   values.yaml: "{}"
 ```
 
-**Write `~/repos/personal/kube_local/apps/local/otel-demo/route.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/otel-demo/route.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/otel-demo/route.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -172,7 +172,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [otel.kube.internal]
+  hostnames: [otel.${CLUSTER_DOMAIN}]
   rules:
     - backendRefs:
         - name: frontend-proxy
@@ -245,9 +245,9 @@ Jaeger's Service is `jaeger`, port `16686`, and it serves under `/jaeger/ui`
 because the chart sets that base path for the proxy. A second route in the
 same file, kept from here on:
 
-**Replace `~/repos/personal/kube_local/apps/local/otel-demo/route.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/route.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/otel-demo/route.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -257,7 +257,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [otel.kube.internal]
+  hostnames: [otel.${CLUSTER_DOMAIN}]
   rules:
     - backendRefs:
         - name: frontend-proxy
@@ -273,7 +273,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [jaeger.otel.kube.internal]
+  hostnames: [jaeger.otel.${CLUSTER_DOMAIN}]
   rules:
     - backendRefs:
         - name: jaeger
@@ -283,10 +283,10 @@ spec:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/otel-demo/route.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/route.yaml
 git -C ~/repos/personal/kube_local commit -m "otel-demo: Jaeger route"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-base --with-source
 curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger/ui/
 ```
 
@@ -296,13 +296,13 @@ certificate covers one level, not `*.otel.kube.internal` (lesson 4).
 
 ### 2. More load
 
-**Replace `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: otel-demo-values-local
+  name: otel-demo-values-dev
   namespace: otel-demo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -319,22 +319,22 @@ data:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "otel-demo: 50 users"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
 ```
 
 `LOCUST_USERS=50`, and more traffic everywhere. Back to the chart's 5:
 
-**Replace `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: otel-demo-values-local
+  name: otel-demo-values-dev
   namespace: otel-demo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -346,10 +346,10 @@ data:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "otel-demo: default load"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
 ```
 

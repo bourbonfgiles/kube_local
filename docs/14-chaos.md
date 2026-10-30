@@ -57,7 +57,7 @@ you apply it:
 **Example only: don't run it**
 ```sh
 helm --kube-context k3d-dev upgrade --install chaos-mesh chaos-mesh --repo https://charts.chaos-mesh.org \
-  --version 2.8.5 -n chaos-mesh --create-namespace -f values-local.yaml
+  --version 2.8.5 -n chaos-mesh --create-namespace -f values-dev.yaml
 kubectl --context k3d-dev apply -f pod-kill.yaml
 ```
 
@@ -70,18 +70,18 @@ Nothing records who broke what, or how to stop it all at once.
 | Namespace | `chaos-mesh` | `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/namespace.yaml` |
 | HelmRepository | `chaos-mesh` | `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/source.yaml` |
 | HelmRelease | `chaos-mesh` | `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/release.yaml` |
-| ConfigMap | `chaos-mesh-values-local` | `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/values.yaml` |
-| HTTPRoute | `chaos-mesh/dashboard` | `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/route.yaml` |
+| ConfigMap | `chaos-mesh-values-dev` | `~/repos/personal/kube_local/infrastructure/dev/chaos-mesh/values.yaml` |
+| HTTPRoute | `chaos-mesh/dashboard` | `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/route.yaml` |
 | Kustomization | `flux-system/chaos` | `~/repos/personal/kube_local/clusters/dev/chaos.yaml` |
 | Namespace, Schedules | `chaos` | `~/repos/personal/kube_local/chaos/*.yaml` |
 
 ### 1. The chart
 
-The HelmRelease reads only the local ConfigMap: the containerd socket is
-k3s's.
+The HelmRelease reads only the dev ConfigMap, `chaos-mesh-values-${CLUSTER_NAME}`:
+the containerd socket is k3s's.
 
 ```sh
-mkdir -p ~/repos/personal/kube_local/infrastructure/base/chaos-mesh ~/repos/personal/kube_local/infrastructure/local/chaos-mesh chaos
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/chaos-mesh ~/repos/personal/kube_local/infrastructure/dev/chaos-mesh chaos
 ```
 
 **Write `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/namespace.yaml`**
@@ -125,16 +125,16 @@ spec:
         name: chaos-mesh
   valuesFrom:
     - kind: ConfigMap
-      name: chaos-mesh-values-local
+      name: chaos-mesh-values-${CLUSTER_NAME}
 ```
 
-**Write `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/dev/chaos-mesh/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/chaos-mesh/values.yaml
+# ~/repos/personal/kube_local/infrastructure/dev/chaos-mesh/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: chaos-mesh-values-local
+  name: chaos-mesh-values-dev
   namespace: chaos-mesh
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -147,9 +147,9 @@ data:
       securityMode: false   # no login; local only
 ```
 
-**Write `~/repos/personal/kube_local/infrastructure/local/chaos-mesh/route.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/chaos-mesh/route.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/chaos-mesh/route.yaml
+# ~/repos/personal/kube_local/infrastructure/base/chaos-mesh/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -159,7 +159,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [chaos.kube.internal]
+  hostnames: [chaos.${CLUSTER_DOMAIN}]
   rules:
     - backendRefs:
         - name: chaos-dashboard
@@ -183,7 +183,7 @@ metadata:
   namespace: flux-system
 spec:
   dependsOn:
-    - name: infra-local
+    - name: infra-dev
   interval: 10m
   retryInterval: 1m
   sourceRef:
@@ -310,7 +310,7 @@ metadata:
   namespace: flux-system
 spec:
   dependsOn:
-    - name: infra-local
+    - name: infra-dev
   interval: 10m
   retryInterval: 1m
   sourceRef:
@@ -529,7 +529,7 @@ metadata:
   namespace: flux-system
 spec:
   dependsOn:
-    - name: infra-local
+    - name: infra-dev
   interval: 10m
   retryInterval: 1m
   sourceRef:

@@ -198,24 +198,32 @@ stands for each chart you add in later lessons:
 ~/repos/personal/kube_local/
   clusters/dev/
     flux-system/                 Written by bootstrap. Don't edit.
-    infrastructure.yaml          Kustomizations infra-base, infra-local (and later infra-local-config)
-    apps.yaml                    Kustomizations apps-base, apps-local
+    infrastructure.yaml          Kustomizations infra-base, infra-dev (and later infra-dev-config)
+    apps.yaml                    Kustomizations apps-base, apps-dev
   infrastructure/
-    base/<component>/            As you'd deploy it on EKS
+    base/<component>/            What every cluster gets
       namespace.yaml
       source.yaml                HelmRepository or OCIRepository
       release.yaml               HelmRelease
       values.yaml                ConfigMap <component>-values-base
-    local/<component>/           Only because this is k3d
-      values.yaml                ConfigMap <component>-values-local
-      route.yaml                 Anything naming *.kube.internal
-    local-config/<component>/    Local objects whose CRDs come from a chart (lesson 4)
+      route.yaml                 HTTPRoute, hostname <component>.${CLUSTER_DOMAIN}
+    dev/<component>/             Only what differs on this cluster, named after clusters/dev
+      values.yaml                ConfigMap <component>-values-dev
+    dev-config/<component>/      Objects only this cluster has, whose CRDs come from a chart (lesson 4)
   apps/
-    base/<app>/, local/<app>/    The same split for applications
+    base/<app>/, dev/<app>/      The same split for applications
 ```
 
-An EKS cluster would get `~/repos/personal/kube_local/clusters/eks/` pointing at the same `base/`
-folders plus an `~/repos/personal/kube_local/infrastructure/eks/`. Nothing in `base/` changes.
+`base/` is not EKS and not k3d: it's every cluster. The overlay is named after
+the folder under `clusters/`, as in Flux's own example repo. An EKS cluster
+would get `~/repos/personal/kube_local/clusters/eks/` pointing at the same
+`base/` folders plus `~/repos/personal/kube_local/infrastructure/eks/` and
+`~/repos/personal/kube_local/apps/eks/`. Nothing in `base/` changes.
+
+Put a file in `base/` if every cluster has the object, even when one field
+differs; make that field a variable. Put it in `dev/` only if the object
+itself is specific to this cluster: the mkcert CA issuer, the KWOK build of
+Karpenter, the k3d registry.
 
 ### Layers
 
@@ -225,14 +233,38 @@ layer. Each points at a folder and can wait for another with `dependsOn`:
 ```mermaid
 flowchart LR
   fs["flux-system<br/>./clusters/dev"] --> ib["infra-base<br/>./infrastructure/base"]
-  ib --> il["infra-local<br/>./infrastructure/local"]
+  ib --> il["infra-dev<br/>./infrastructure/dev"]
   ib --> ab["apps-base<br/>./apps/base"]
-  ab --> al["apps-local<br/>./apps/local"]
+  ab --> al["apps-dev<br/>./apps/dev"]
 ```
 
-`apps-base` waits on `infra-base`, `apps-local` on `apps-base`, and
-`infra-local` on `infra-base`. Add each one when its folder has its first
+`apps-base` waits on `infra-base`, `apps-dev` on `apps-base`, and
+`infra-dev` on `infra-base`. Add each one when its folder has its first
 file: Flux can't apply a path that isn't in Git.
+
+### Cluster variables
+
+The base layers set two variables, and Flux replaces `${CLUSTER_NAME}` and
+`${CLUSTER_DOMAIN}` in every file under their path before applying it:
+
+**Example only: the block both base layers carry**
+```yaml
+  postBuild:
+    substitute:
+      CLUSTER_NAME: dev
+      CLUSTER_DOMAIN: kube.internal
+```
+
+| Variable | Used for | On EKS |
+| --- | --- | --- |
+| `CLUSTER_NAME` | The overlay ConfigMap a base HelmRelease reads: `podinfo-values-${CLUSTER_NAME}` | `eks`, so it reads `podinfo-values-eks` |
+| `CLUSTER_DOMAIN` | Hostnames on routes, the Gateway and Canaries: `podinfo.${CLUSTER_DOMAIN}` | Your real domain |
+| `CLUSTER_ISSUER` | Added in [lesson 4](04-cert-manager.md) on `infra-base`: the cert-manager issuer the Gateway names | An ACME issuer |
+
+> [!WARNING]
+> An unset variable becomes an empty string, not an error: a typo gives you
+> `podinfo.` as a hostname. Only `${...}` is substituted; write `$${...}` to
+> keep one literally. A bare `$`, such as `$imagepolicy`, is left alone.
 
 ### Chart values
 
@@ -240,7 +272,7 @@ By hand, values are files and a later `-f` wins:
 
 **Example only: don't run it**
 ```sh
-helm upgrade --install podinfo ... -f values-base.yaml -f values-local.yaml
+helm upgrade --install podinfo ... -f values-base.yaml -f values-dev.yaml
 ```
 
 Flux can't read a values file from Git, so each file's contents go into a
@@ -250,13 +282,14 @@ same order:
 | By hand | With Flux |
 | --- | --- |
 | `-f values-base.yaml` | ConfigMap `podinfo-values-base` in `~/repos/personal/kube_local/apps/base/podinfo/values.yaml` |
-| `-f values-local.yaml` | ConfigMap `podinfo-values-local` in `~/repos/personal/kube_local/apps/local/podinfo/values.yaml` |
+| `-f values-dev.yaml` | ConfigMap `podinfo-values-dev` in `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`, listed in base as `podinfo-values-${CLUSTER_NAME}` |
 | `--set image.tag=...` | `spec.values` on the HelmRelease. Overrides every ConfigMap. |
 
 - The ConfigMaps must be in the HelmRelease's namespace.
 - The watch label makes Flux upgrade as soon as a ConfigMap changes, instead
   of at the next `interval`.
-- The route is local because its hostname is.
+- The route is in base: every cluster routes podinfo. Only its hostname
+  differs, and that's `${CLUSTER_DOMAIN}`.
 
 ### Write the files
 
@@ -288,6 +321,10 @@ layers.
        name: flux-system
      path: ./infrastructure/base
      prune: true
+     postBuild:
+       substitute:
+         CLUSTER_NAME: dev
+         CLUSTER_DOMAIN: kube.internal
    ```
 
 3. Commit, push, and reconcile rather than waiting a minute:
@@ -301,7 +338,7 @@ layers.
    back, from Git. sofka / k9s: `:kustomizations all`, then `:gateways all`.
 5. Create the podinfo folders:
    ```sh
-   mkdir -p ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/local/podinfo
+   mkdir -p ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/dev/podinfo
    ```
 6. Create podinfo's six files:
 
@@ -349,7 +386,7 @@ layers.
        - kind: ConfigMap
          name: podinfo-values-base
        - kind: ConfigMap
-         name: podinfo-values-local
+         name: podinfo-values-${CLUSTER_NAME}
    ```
 
    **Write `~/repos/personal/kube_local/apps/base/podinfo/values.yaml`**
@@ -367,25 +404,9 @@ layers.
        replicaCount: 2
    ```
 
-   **Write `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/route.yaml`**
    ```yaml
-   # ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
-   apiVersion: v1
-   kind: ConfigMap
-   metadata:
-     name: podinfo-values-local
-     namespace: podinfo
-     labels:
-       reconcile.fluxcd.io/watch: Enabled
-   data:
-     values.yaml: |
-       ui:
-         message: k3d
-   ```
-
-   **Write `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`**
-   ```yaml
-   # ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
    apiVersion: gateway.networking.k8s.io/v1
    kind: HTTPRoute
    metadata:
@@ -395,11 +416,27 @@ layers.
      parentRefs:
        - name: web
          namespace: gateway
-     hostnames: [podinfo.kube.internal]
+     hostnames: [podinfo.${CLUSTER_DOMAIN}]
      rules:
        - backendRefs:
            - name: podinfo
              port: 9898
+   ```
+
+   **Write `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: podinfo-values-dev
+     namespace: podinfo
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       ui:
+         message: k3d
    ```
 
 7. Create the apps layers:
@@ -422,11 +459,15 @@ layers.
        name: flux-system
      path: ./apps/base
      prune: true
+     postBuild:
+       substitute:
+         CLUSTER_NAME: dev
+         CLUSTER_DOMAIN: kube.internal
    ---
    apiVersion: kustomize.toolkit.fluxcd.io/v1
    kind: Kustomization
    metadata:
-     name: apps-local
+     name: apps-dev
      namespace: flux-system
    spec:
      interval: 10m
@@ -436,7 +477,7 @@ layers.
      sourceRef:
        kind: GitRepository
        name: flux-system
-     path: ./apps/local
+     path: ./apps/dev
      prune: true
    ```
 
@@ -446,10 +487,11 @@ layers.
    git -C ~/repos/personal/kube_local commit -m "Add podinfo"
    git -C ~/repos/personal/kube_local push
    flux --context k3d-dev reconcile kustomization flux-system --with-source
-   kubectl --context k3d-dev wait kustomization/apps-local -n flux-system --for=condition=Ready --timeout=5m
+   kubectl --context k3d-dev wait kustomization/apps-dev -n flux-system --for=condition=Ready --timeout=5m
    curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
    ```
-   The message is `k3d`, from the local ConfigMap. sofka / k9s:
+   The message is `k3d`, from the dev ConfigMap; the route came from base
+   with `podinfo.kube.internal` substituted in. sofka / k9s:
    `:helmreleases all`.
 
 ## Iterate
@@ -460,13 +502,13 @@ between `# ── new ──` and `# ── end new ──`.
 
 ### 1. Change the message: a new Helm revision
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: podinfo-values-local
+  name: podinfo-values-dev
   namespace: podinfo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -479,10 +521,10 @@ data:
 ```
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: first change"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 helm --kube-context k3d-dev history podinfo -n podinfo
 ```
 
@@ -524,7 +566,7 @@ spec:
     - kind: ConfigMap
       name: podinfo-values-base
     - kind: ConfigMap
-      name: podinfo-values-local
+      name: podinfo-values-${CLUSTER_NAME}
 ```
 
 ```sh
@@ -553,13 +595,13 @@ Drift detection stays on from here; later lessons expect it.
 flux --context k3d-dev suspend helmrelease podinfo -n podinfo
 ```
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: podinfo-values-local
+  name: podinfo-values-dev
   namespace: podinfo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -572,10 +614,10 @@ data:
 ```
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: while suspended"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 helm --kube-context k3d-dev history podinfo -n podinfo
 ```
 
@@ -669,13 +711,13 @@ Flux actions:
 
 Later lessons expect the message `k3d`.
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: podinfo-values-local
+  name: podinfo-values-dev
   namespace: podinfo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -688,17 +730,17 @@ data:
 ```
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: back to k3d"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
 ```
 
 ## Exercises
 
 1. Drift on a plain manifest: delete the route with `kubectl` and watch
-   `apps-local` put it back within its interval.
+   `apps-base` put it back within its interval.
 2. Ask Flux where a pod came from:
    ```sh
    flux --context k3d-dev trace -n podinfo deployment podinfo
@@ -710,7 +752,7 @@ curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
    flux --context k3d-dev diff kustomization apps-base --path ./apps/base
    ```
 4. Undo with `git -C ~/repos/personal/kube_local revert` instead of editing: set `message: oops` in
-   `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`, push, then `git -C ~/repos/personal/kube_local revert --no-edit HEAD` and
+   `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`, push, then `git -C ~/repos/personal/kube_local revert --no-edit HEAD` and
    push again. Compare `git -C ~/repos/personal/kube_local log --oneline -3` with
    `helm --kube-context k3d-dev history podinfo -n podinfo`.
 5. Harder: adopt Cilium, below.
@@ -722,11 +764,11 @@ release name and namespace takes that release over, so Flux owns the CNI.
 
 | File | Contents |
 | --- | --- |
-| `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml` | Add Kustomization `infra-local` |
+| `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml` | Add Kustomization `infra-dev` |
 | `~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml` | HelmRepository `cilium` in `kube-system`, `url: https://helm.cilium.io` |
-| `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` both ConfigMaps, base first |
+| `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` `cilium-values-base`, then `cilium-values-${CLUSTER_NAME}` |
 | `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `~/repos/personal/kube_local/cilium/values.yaml` |
-| `~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `~/repos/personal/kube_local/overlays/local/cilium-values.yaml` |
+| `~/repos/personal/kube_local/infrastructure/dev/cilium/values.yaml` | ConfigMap `cilium-values-dev`: the contents of `~/repos/personal/kube_local/overlays/local/cilium-values.yaml` |
 
 **Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
 ```yaml
@@ -744,12 +786,16 @@ spec:
     name: flux-system
   path: ./infrastructure/base
   prune: true
+  postBuild:
+    substitute:
+      CLUSTER_NAME: dev
+      CLUSTER_DOMAIN: kube.internal
 # ── new ──
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: infra-local
+  name: infra-dev
   namespace: flux-system
 spec:
   interval: 10m
@@ -759,7 +805,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/local
+  path: ./infrastructure/dev
   prune: true
 # ── end new ──
 ```
@@ -798,7 +844,7 @@ spec:
     - kind: ConfigMap
       name: cilium-values-base
     - kind: ConfigMap
-      name: cilium-values-local
+      name: cilium-values-${CLUSTER_NAME}
 ```
 
 **Write `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml`**
@@ -829,13 +875,13 @@ data:
       enabled: true
 ```
 
-**Write `~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/dev/cilium/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml
+# ~/repos/personal/kube_local/infrastructure/dev/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: cilium-values-local
+  name: cilium-values-dev
   namespace: kube-system
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -904,7 +950,7 @@ The ConfigMaps hold `~/repos/personal/kube_local/cilium/values.yaml` and
 ## Where it gets hard
 
 - Flux reads GitHub, not your checkout. Push before expecting anything.
-- A HelmRelease in `base/` reports its local ConfigMap missing until the local
+- A HelmRelease in `base/` reports its dev ConfigMap missing until the dev
   layer has applied it. It retries on its own.
 - CRD ordering: a Kustomization that applies an object whose CRD comes from a
   chart fails until the chart is installed. If something the chart needs is in

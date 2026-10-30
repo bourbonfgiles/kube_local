@@ -52,14 +52,14 @@ unit; `resolvectl status k3d0` should list `10.89.0.250`.
 > [!NOTE]
 > Read this, don't run it. Flux does the same from Git below.
 
-By hand, ExternalDNS is one `helm` command with a base and a local values
+By hand, ExternalDNS is one `helm` command with a base and a dev values
 file:
 
 **Example only: don't run it**
 ```sh
 helm --kube-context k3d-dev upgrade --install external-dns external-dns \
   --repo https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0 \
-  -n external-dns -f values-base.yaml -f values-local.yaml
+  -n external-dns -f values-base.yaml -f values-dev.yaml
 ```
 
 Each values file becomes a ConfigMap below, unchanged, under
@@ -95,7 +95,7 @@ sofka / k9s: `:secrets external-dns`, `x` to decode
 | HelmRepository | `external-dns` | `~/repos/personal/kube_local/infrastructure/base/external-dns/source.yaml` |
 | HelmRelease | `external-dns` | `~/repos/personal/kube_local/infrastructure/base/external-dns/release.yaml` |
 | ConfigMap | `external-dns-values-base` | `~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml` |
-| ConfigMap | `external-dns-values-local` | `~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml` |
+| ConfigMap | `external-dns-values-dev` | `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml` |
 | Secret | `externaldns-tsig` | By hand, above; lesson 5 puts it in Git encrypted |
 
 This chart comes from a classic Helm repository, so the release uses
@@ -103,7 +103,7 @@ This chart comes from a classic Helm repository, so the release uses
 `OCIRepository`.
 
 ```sh
-mkdir -p ~/repos/personal/kube_local/infrastructure/base/external-dns ~/repos/personal/kube_local/infrastructure/local/external-dns
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/external-dns ~/repos/personal/kube_local/infrastructure/dev/external-dns
 ```
 
 **Write `~/repos/personal/kube_local/infrastructure/base/external-dns/namespace.yaml`**
@@ -149,7 +149,7 @@ spec:
     - kind: ConfigMap
       name: external-dns-values-base
     - kind: ConfigMap
-      name: external-dns-values-local
+      name: external-dns-values-${CLUSTER_NAME}
 ```
 
 What you'd keep on EKS:
@@ -173,13 +173,13 @@ data:
 
 What's local: BIND as the provider, and the key.
 
-**Write `~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml
+# ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: external-dns-values-local
+  name: external-dns-values-dev
   namespace: external-dns
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -205,7 +205,7 @@ data:
 ```
 
 If you didn't adopt Cilium in lesson 2, this is the first file under
-`~/repos/personal/kube_local/infrastructure/local/`, so add `infra-local` in the same commit. If you did,
+`~/repos/personal/kube_local/infrastructure/dev/`, so add `infra-dev` in the same commit. If you did,
 the file already looks like this:
 
 **Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
@@ -224,12 +224,16 @@ spec:
     name: flux-system
   path: ./infrastructure/base
   prune: true
+  postBuild:
+    substitute:
+      CLUSTER_NAME: dev
+      CLUSTER_DOMAIN: kube.internal
 # ── new ──
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: infra-local
+  name: infra-dev
   namespace: flux-system
 spec:
   interval: 10m
@@ -239,7 +243,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./infrastructure/local
+  path: ./infrastructure/dev
   prune: true
 # ── end new ──
 ```
@@ -281,9 +285,9 @@ Every change is a commit. New or changed lines sit between `# ── new ──`
 
 ### 1. A second hostname on the route
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/route.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -294,7 +298,7 @@ spec:
     - name: web
       namespace: gateway
   # ── new ──
-  hostnames: [podinfo.kube.internal, hello.kube.internal]
+  hostnames: [podinfo.${CLUSTER_DOMAIN}, hello.${CLUSTER_DOMAIN}]
   # ── end new ──
   rules:
     - backendRefs:
@@ -303,10 +307,10 @@ spec:
 ```
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: hello.kube.internal"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-base --with-source
 dig +short @10.89.0.250 hello.kube.internal
 ```
 
@@ -343,9 +347,9 @@ flux --context k3d-dev get helmreleases -n external-dns
 
 Once the release has upgraded, take the second hostname off again:
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/route.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -356,7 +360,7 @@ spec:
     - name: web
       namespace: gateway
   # ── new ──
-  hostnames: [podinfo.kube.internal]
+  hostnames: [podinfo.${CLUSTER_DOMAIN}]
   # ── end new ──
   rules:
     - backendRefs:
@@ -365,10 +369,10 @@ spec:
 ```
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: one hostname"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-base --with-source
 dig +short @10.89.0.250 hello.kube.internal
 ```
 
@@ -407,13 +411,13 @@ Within a minute, the record is gone.
 
 The same file with the `--rfc2136-axfr` line removed:
 
-**Replace `~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml`**
+**Replace `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml
+# ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: external-dns-values-local
+  name: external-dns-values-dev
   namespace: external-dns
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -438,22 +442,22 @@ data:
 ```
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
 git -C ~/repos/personal/kube_local commit -m "ExternalDNS without AXFR"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-local --with-source
+flux --context k3d-dev reconcile kustomization infra-dev --with-source
 kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f
 ```
 
 It can't list the zone, so it can't reconcile deletes. Put the line back:
 
-**Replace `~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml`**
+**Replace `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml
+# ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: external-dns-values-local
+  name: external-dns-values-dev
   namespace: external-dns
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -481,10 +485,10 @@ data:
 ```
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local/external-dns/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
 git -C ~/repos/personal/kube_local commit -m "ExternalDNS with AXFR"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-local --with-source
+flux --context k3d-dev reconcile kustomization infra-dev --with-source
 ```
 
 ## Exercises
