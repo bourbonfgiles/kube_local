@@ -283,226 +283,27 @@ The TXT record is the ownership record: it names `k3d-dev`.
 Every change is a commit. New or changed lines sit between `# ── new ──` and
 `# ── end new ──`.
 
-### 1. A second hostname on the route
+### Changes worth knowing
 
-**Replace `~/repos/personal/kube_local/apps/base/podinfo/route.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  parentRefs:
-    - name: web
-      namespace: gateway
-  # ── new ──
-  hostnames: ["podinfo.${CLUSTER_DOMAIN}", "hello.${CLUSTER_DOMAIN}"]
-  # ── end new ──
-  rules:
-    - backendRefs:
-        - name: podinfo
-          port: 9898
-```
+Each row is one commit, then its revert. What happens is the point; try any you like.
 
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: hello.kube.internal"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-base --with-source
-dig +short @10.89.0.250 hello.kube.internal
-```
-
-A record within ExternalDNS's 1m interval.
-
-### 2. `policy: upsert-only`: records stay when routes go
-
-**Replace `~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: external-dns-values-base
-  namespace: external-dns
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    sources: [service, gateway-httproute, gateway-grpcroute]
-    # ── new ──
-    policy: upsert-only
-    # ── end new ──
-    registry: txt
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml
-git -C ~/repos/personal/kube_local commit -m "ExternalDNS upsert-only"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-base --with-source
-flux --context k3d-dev get helmreleases -n external-dns
-```
-
-Once the release has upgraded, take the second hostname off again:
-
-**Replace `~/repos/personal/kube_local/apps/base/podinfo/route.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  parentRefs:
-    - name: web
-      namespace: gateway
-  # ── new ──
-  hostnames: ["podinfo.${CLUSTER_DOMAIN}"]
-  # ── end new ──
-  rules:
-    - backendRefs:
-        - name: podinfo
-          port: 9898
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: one hostname"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-base --with-source
-dig +short @10.89.0.250 hello.kube.internal
-```
-
-The record stays: upsert-only never deletes. Back to `sync`:
-
-**Replace `~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: external-dns-values-base
-  namespace: external-dns
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    sources: [service, gateway-httproute, gateway-grpcroute]
-    # ── new ──
-    policy: sync
-    # ── end new ──
-    registry: txt
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml
-git -C ~/repos/personal/kube_local commit -m "ExternalDNS sync"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-base --with-source
-dig +short @10.89.0.250 hello.kube.internal
-```
-
-Within a minute, the record is gone.
-
-### 3. Without zone transfers
-
-The same file with the `--rfc2136-axfr` line removed:
-
-**Replace `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: external-dns-values-dev
-  namespace: external-dns
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    provider:
-      name: rfc2136
-    txtOwnerId: k3d-dev
-    domainFilters: [kube.internal]
-    extraArgs:
-      - --rfc2136-host=bind.dns.svc.cluster.local.
-      - --rfc2136-port=53
-      - --rfc2136-zone=kube.internal
-      - --rfc2136-tsig-keyname=externaldns
-      - --rfc2136-tsig-secret-alg=hmac-sha256
-    env:
-      - name: EXTERNAL_DNS_RFC2136_TSIG_SECRET
-        valueFrom:
-          secretKeyRef:
-            name: externaldns-tsig
-            key: secret
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
-git -C ~/repos/personal/kube_local commit -m "ExternalDNS without AXFR"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-dev --with-source
-kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f
-```
-
-It can't list the zone, so it can't reconcile deletes. Put the line back:
-
-**Replace `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: external-dns-values-dev
-  namespace: external-dns
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    provider:
-      name: rfc2136
-    txtOwnerId: k3d-dev
-    domainFilters: [kube.internal]
-    extraArgs:
-      - --rfc2136-host=bind.dns.svc.cluster.local.
-      - --rfc2136-port=53
-      - --rfc2136-zone=kube.internal
-      - --rfc2136-tsig-keyname=externaldns
-      - --rfc2136-tsig-secret-alg=hmac-sha256
-      # ── new ──
-      - --rfc2136-axfr
-      # ── end new ──
-    env:
-      - name: EXTERNAL_DNS_RFC2136_TSIG_SECRET
-        valueFrom:
-          secretKeyRef:
-            name: externaldns-tsig
-            key: secret
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml
-git -C ~/repos/personal/kube_local commit -m "ExternalDNS with AXFR"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-dev --with-source
-```
+| Change | File | What happens |
+| --- | --- | --- |
+| Add `"hello.${CLUSTER_DOMAIN}"` to `hostnames` | `~/repos/personal/kube_local/apps/base/podinfo/route.yaml` | An A record and a TXT ownership record within ExternalDNS's 1m interval. Take it off again and both go. |
+| `policy: upsert-only` | `~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml` | Creates and updates, never deletes: a hostname taken off a route keeps its record. `sync` deletes it. Push the policy before the route change, or the delete happens first. |
+| Drop `--rfc2136-axfr` | `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml` | ExternalDNS can't list the zone, so it can't work out what to delete; its logs say so. |
 
 ## Exercises
 
-1. Delete podinfo's route in Git and watch its A and TXT records go.
-2. In Git, a Service of `type: LoadBalancer` with the annotation
+1. In Git, a Service of `type: LoadBalancer` with the annotation
    `external-dns.alpha.kubernetes.io/hostname: lb.kube.internal`. Cilium gives
    it an address from the pool; ExternalDNS names it.
-3. Restart BIND
+2. Restart BIND
    (`kubectl --context k3d-dev -n dns rollout restart deploy/bind`, or `r` on
    it in `:deploy dns`). The zone lives in an
    `emptyDir`, so records vanish. Time how long until ExternalDNS puts them
    back.
-4. Harder: a second ExternalDNS HelmRelease in Git, in its own namespace,
+3. Harder: a second ExternalDNS HelmRelease in Git, in its own namespace,
    with `txtOwnerId: other`. Work
    out from the TXT records why neither deletes the other's records, and what
    happens when both claim the same name.

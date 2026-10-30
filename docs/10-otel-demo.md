@@ -294,64 +294,11 @@ curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger
 `/jaeger/ui` unless you change it in values. It's plain HTTP: the wildcard
 certificate covers one level, not `*.otel.kube.internal` (lesson 4).
 
-### 2. More load
+### More load
 
-**Replace `~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: otel-demo-values-dev
-  namespace: otel-demo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    # ── new ──
-    components:
-      load-generator:
-        envOverrides:
-          - name: LOCUST_USERS
-            value: "50"
-    # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "otel-demo: 50 users"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
-```
-
-`LOCUST_USERS=50`, and more traffic everywhere. Back to the chart's 5:
-
-**Replace `~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: otel-demo-values-dev
-  namespace: otel-demo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  # ── new ──
-  values.yaml: "{}"
-  # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "otel-demo: default load"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
-```
+`LOCUST_USERS: "50"` under `components.load-generator.envOverrides` in
+`~/repos/personal/kube_local/apps/dev/otel-demo/values.yaml`: more traffic everywhere. One commit,
+then remove it for the chart's 5.
 
 ## Exercises
 

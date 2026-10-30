@@ -191,56 +191,15 @@ kubectl --context k3d-dev -n default get secret demo -o jsonpath='{.data.passwor
 
 sofka / k9s: `:secrets default`, `x` on `demo`
 
-### 1. Edit it encrypted, and what Git sees
+### Changes worth knowing
 
-```sh
-sops set ~/repos/personal/kube_local/secrets/dev/demo.yaml '["data"]["password"]' "\"$(printf hunter3 | base64)\""
-git -C ~/repos/personal/kube_local diff ~/repos/personal/kube_local/secrets/dev/demo.yaml
-```
+| Do | What happens |
+| --- | --- |
+| `sops set ~/repos/personal/kube_local/secrets/dev/demo.yaml '["data"]["password"]' "\"$(printf hunter3 \| base64)\""`, then `git diff` | Only that value's ciphertext and `sops.mac` change. `sops <file>` does the same in your editor, decrypted, and re-encrypts on save. |
+| Encrypt a copy without `encrypted_regex`, in `~/repos/personal/scratch/05/` | Every value is encrypted, `metadata.name` too: Kubernetes rejects the file, and nobody reviewing it can tell what it is. |
+| Move `~/.config/sops/age/keys.txt` aside, then `sops --decrypt` | Fails, as on any machine without the key. The cluster doesn't notice: it has its own copy in `sops-age`. |
 
-Only that value's ciphertext and the `sops.mac` change. `sops
-secrets/dev/demo.yaml` does the same in your editor, decrypted, and
-re-encrypts on save.
-
-```sh
-git -C ~/repos/personal/kube_local commit -am "SOPS demo secret: hunter3"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization secrets --with-source
-kubectl --context k3d-dev -n default get secret demo -o jsonpath='{.data.password}' | base64 -d
-```
-
-### 2. Encrypt everything
-
-A local check, not for Git. A copy without `encrypted_regex`, in `~/repos/personal/scratch/`
-so `~/repos/personal/kube_local/.sops.yaml` doesn't match it:
-
-```sh
-mkdir -p ~/repos/personal/scratch/05
-kubectl --context k3d-dev -n default create secret generic demo-all \
-  --from-literal=password=hunter2 --dry-run=client -o yaml > ~/repos/personal/scratch/05/demo-all.yaml
-sops --encrypt --age "$(age-keygen -y ~/.config/sops/age/keys.txt)" --in-place ~/repos/personal/scratch/05/demo-all.yaml
-cat ~/repos/personal/scratch/05/demo-all.yaml
-sops --decrypt ~/repos/personal/scratch/05/demo-all.yaml | kubectl --context k3d-dev apply -f - --dry-run=server
-kubectl --context k3d-dev apply -f ~/repos/personal/scratch/05/demo-all.yaml --dry-run=server
-```
-
-Every value is encrypted, even `metadata.name`. Decrypted, it applies; as a
-file, Kubernetes rejects it, and nobody reviewing a pull request could tell
-what it is.
-
-### 3. A machine without the key
-
-```sh
-mv ~/.config/sops/age/keys.txt ~/.config/sops/age/keys.txt.aside
-sops --decrypt ~/repos/personal/kube_local/secrets/dev/demo.yaml
-mv ~/.config/sops/age/keys.txt.aside ~/.config/sops/age/keys.txt
-sops --decrypt ~/repos/personal/kube_local/secrets/dev/demo.yaml
-```
-
-The first `--decrypt` fails as it would anywhere without the key; the second
-works again. The cluster never noticed: it has its own copy in `sops-age`.
-
-### 4. Remove it
+### 1. Remove it
 
 ```sh
 git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/secrets/dev/demo.yaml
@@ -254,12 +213,11 @@ kubectl --context k3d-dev -n default get secret demo
 
 ## Exercises
 
-1. `git grep -nE 'hunter2|BEGIN (RSA |EC )?PRIVATE'` the whole repo: nothing.
-2. Edit the TSIG Secret with `sops ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml`, push,
+1. Edit the TSIG Secret with `sops ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml`, push,
    and watch ExternalDNS's updates start failing. Put it back.
-3. Rebuild the cluster. Recreate `sops-age` (step 3) before Flux syncs
+2. Rebuild the cluster. Recreate `sops-age` (step 3) before Flux syncs
    `secrets`, and see everything else come back on its own.
-4. Harder: add a second age recipient (a key for "CI") to `~/repos/personal/kube_local/.sops.yaml`, then
+3. Harder: add a second age recipient (a key for "CI") to `~/repos/personal/kube_local/.sops.yaml`, then
    `sops updatekeys` each file. Prove either key alone can decrypt.
 
 ## Where it gets hard

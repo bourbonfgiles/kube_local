@@ -14,8 +14,8 @@ manifests and values, never application code.
 | **Requirements** | What must already be in the cluster, and the tools you need on your machine. |
 | **By hand, for comparison** | The `helm` / `kubectl apply` it replaces, marked **Example only**. Read, don't run. |
 | **Install with Flux** | A kind / name / file table, then the files, committed and reconciled. Each check is a kubectl command, then a `sofka / k9s:` line with the keys. |
-| **Iterate** | Changes to those files, one commit each, to see what each field does. Throwaway experiments are written, pushed, then `git rm`'d. |
-| **Exercises** | Easy first, hardest last. |
+| **Iterate** | A table of changes worth knowing: the field, the file, what happens. Each is one commit if you want to try it. Full steps only where something surprises or a later lesson needs it. |
+| **Exercises** | Only the ones worth doing, easy first, hardest last. |
 | **Where it gets hard** | The failure modes, and how they show themselves. |
 
 Lesson 1 is the exception: Cilium is the CNI, so it and the first Gateway

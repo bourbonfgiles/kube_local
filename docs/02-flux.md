@@ -496,44 +496,13 @@ layers.
 
 ## Iterate
 
-Every change is a commit. Each step replaces one file, pushes it, and asks Flux
-to reconcile now rather than at the next interval. New and changed lines sit
-between `# ── new ──` and `# ── end new ──`.
+Every change is a commit. New and changed lines sit between `# ── new ──` and
+`# ── end new ──`. Reconciling by hand only skips the 1m poll of Git; Flux
+applies a push on its own.
 
-### 1. Change the message: a new Helm revision
+### 1. Helm drift: Flux doesn't notice by default
 
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-dev
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      # ── new ──
-      message: first change
-      # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: first change"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-helm --kube-context k3d-dev history podinfo -n podinfo
-```
-
-A new revision straight away: the watch label makes the ConfigMap change
-trigger an upgrade instead of waiting for the interval.
-
-### 2. Delete the Service: Flux doesn't notice
-
-No file change. This is the drift Git can't see.
+The one behaviour that surprises Argo CD users. No file change:
 
 ```sh
 kubectl --context k3d-dev -n podinfo delete service podinfo
@@ -543,7 +512,7 @@ kubectl --context k3d-dev -n podinfo get service podinfo
 It stays gone, and `curl` through the Gateway fails: by default helm-controller
 only checks its own changes.
 
-### 3. Drift detection: Flux puts it back
+### 2. Turn on drift detection
 
 **Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
 ```yaml
@@ -589,175 +558,26 @@ kubectl --context k3d-dev -n podinfo get service podinfo
 
 Drift detection stays on from here; later lessons expect it.
 
-### 4. Suspend, change, resume
+### Asking Flux what it did
 
-```sh
-flux --context k3d-dev suspend helmrelease podinfo -n podinfo
-```
+| Question | Command | sofka / k9s |
+| --- | --- | --- |
+| Where did this object come from? | `flux --context k3d-dev trace -n podinfo deployment podinfo` | sofka `:gitops` on it; k9s `Shift-q` (plugin) |
+| What does a Kustomization own? | `flux --context k3d-dev tree kustomization apps-base` | |
+| What would this push change? | `flux --context k3d-dev diff kustomization apps-base --path ~/repos/personal/kube_local/apps/base` | |
+| What happened, in order? | `flux --context k3d-dev events -A` | `:events flux-system` |
+| Which Helm revision is live? | `helm --kube-context k3d-dev history podinfo -n podinfo` | sofka `⏎` on the HelmRelease; k9s `:helm` |
+| Why isn't it Ready? | `flux --context k3d-dev get all -A --status-selector ready=false` | sofka `ctrl-z`, then `X` |
 
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-dev
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      # ── new ──
-      message: while suspended
-      # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: while suspended"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-helm --kube-context k3d-dev history podinfo -n podinfo
-```
-
-No new revision: the ConfigMap changed, but helm-controller is paused. Resume
-it:
-
-```sh
-flux --context k3d-dev resume helmrelease podinfo -n podinfo
-helm --kube-context k3d-dev history podinfo -n podinfo
-```
-
-### 5. A tag that doesn't exist, then back
-
-**Replace `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    # ── new ──
-    tag: 9.9.9
-    # ── end new ──
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: chart 9.9.9"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-base --with-source
-kubectl --context k3d-dev -n podinfo describe ocirepository podinfo
-flux --context k3d-dev get helmreleases -n podinfo
-```
-
-The OCIRepository reports the missing tag; the HelmRelease keeps running the
-last good chart. Put `6.7.1` back:
-
-**Replace `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    # ── new ──
-    tag: 6.7.1
-    # ── end new ──
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: chart 6.7.1"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-base --with-source
-flux --context k3d-dev reconcile source oci podinfo -n podinfo
-kubectl --context k3d-dev -n podinfo get ocirepository podinfo
-```
-
-sofka / k9s: `d` on the OCIRepository for its error. They differ on Helm and
-Flux actions:
-
-- sofka: `⏎` on the HelmRelease for Helm's revisions; `t` to suspend or
-  reconcile.
-- k9s: `:helm`, `r` on `podinfo`; `Shift-t` to suspend, `Shift-r` to
-  reconcile (dotfiles plugins).
-
-> [!TIP]
-> A sofka extra ([lesson 0](00-tools.md)): with `ref.tag: 9.9.9`, `ctrl-z` on
-> `:ocirepositories all` leaves only the broken source, and `X` gives its
-> `Ready` reason. `:gitops` on the podinfo Deployment walks up to the
-> HelmRelease and its source, with the applied and latest revisions side by
-> side.
-
-### 6. Back to the start
-
-Later lessons expect the message `k3d`.
-
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-dev
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      # ── new ──
-      message: k3d
-      # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: back to k3d"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
-```
+Undo is `git -C ~/repos/personal/kube_local revert`, pushed: each revert is a
+new Helm revision, not a Helm rollback.
 
 ## Exercises
 
-1. Drift on a plain manifest: delete the route with `kubectl` and watch
-   `apps-base` put it back within its interval.
-2. Ask Flux where a pod came from:
-   ```sh
-   flux --context k3d-dev trace -n podinfo deployment podinfo
-   ```
-   The same from a TUI: sofka `:gitops` on the Deployment; k9s `Shift-q` on
-   it (dotfiles plugin).
-3. Preview a change before pushing:
-   ```sh
-   flux --context k3d-dev diff kustomization apps-base --path ./apps/base
-   ```
-4. Undo with `git -C ~/repos/personal/kube_local revert` instead of editing: set `message: oops` in
-   `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`, push, then `git -C ~/repos/personal/kube_local revert --no-edit HEAD` and
-   push again. Compare `git -C ~/repos/personal/kube_local log --oneline -3` with
-   `helm --kube-context k3d-dev history podinfo -n podinfo`.
-5. Harder: adopt Cilium, below.
+One, and later lessons depend on it: lesson 6 changes Cilium's values through
+Flux.
 
-## Adopting Cilium
+### Adopt Cilium
 
 `bootstrap.sh` installed Cilium with `helm`. A HelmRelease with the same
 release name and namespace takes that release over, so Flux owns the CNI.
@@ -967,9 +787,22 @@ The ConfigMaps hold `~/repos/personal/kube_local/cilium/values.yaml` and
 | `Application` (Helm) | `HelmRepository` / `OCIRepository` + `HelmRelease` |
 | App of apps | A `Kustomization` whose path holds more `Kustomization`s, as `~/repos/personal/kube_local/clusters/dev/` does |
 | Sync waves | `dependsOn` |
-| Self-heal | Default for manifests; `driftDetection` for HelmReleases |
+| Self-heal | Default for manifests, at `interval`; `driftDetection` for HelmReleases |
+| Disable auto-sync | `suspend: true` in Git, or `flux suspend` (itself drift Flux won't revert) |
+| UI diff | `flux diff kustomization` |
 | Argo Rollouts | Flagger (lesson 9) |
 | Argo CD Image Updater | Image automation controllers (lesson 8) |
+
+How they behave differently:
+
+| | Argo CD | Flux |
+| --- | --- | --- |
+| Drift | Self-heal reverts any managed object, Helm or not, as soon as it sees it | A Kustomization re-applies plain manifests at its `interval` (10m here). A HelmRelease ignores drift in what Helm installed unless `driftDetection.mode: enabled` |
+| Change detection | Watches live state | Polls Git at the GitRepository `interval` (1m here) and re-applies on a timer |
+| Helm | Renders the chart itself; no Helm release exists | A real Helm release: `helm list`, `helm history` and Helm hooks all apply |
+| Ordering | Sync waves within an app | `dependsOn` between Kustomizations or HelmReleases |
+| Health | Built-in health checks per kind | `Ready` conditions; `wait: true` or `healthChecks` on a Kustomization to gate `dependsOn` |
+| Multi-tenancy | Projects | Kustomization `serviceAccountName`, namespaced Flux objects |
 
 ## Links
 

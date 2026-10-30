@@ -359,115 +359,12 @@ it promotes. Watch the weights with
 `kubectl --context k3d-dev -n podinfo get httproute podinfo -o yaml`
 (sofka / k9s: `d` on the route).
 
-### 2. Bigger steps
+### Bigger steps
 
-**Replace `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
-apiVersion: flagger.app/v1beta1
-kind: Canary
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  targetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: podinfo
-  service:
-    port: 9898
-    hosts: ["podinfo.${CLUSTER_DOMAIN}"]
-    gatewayRefs:
-      - name: web
-        namespace: gateway
-  analysis:
-    interval: 30s
-    threshold: 3
-    # ── new ──
-    stepWeight: 25
-    # ── end new ──
-    maxWeight: 50
-    webhooks:
-      - name: load
-        url: http://loadtester.podinfo/
-        metadata:
-          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.${CLUSTER_DOMAIN} http://cilium-gateway-web.gateway/"
-```
+`stepWeight: 25` on the Canary, with a new message to make a release: two
+steps, 25 and 50, then promotion. Put 10 back before the faulty release.
 
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-dev
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    # ── new ──
-    ui:
-      message: release two
-    # ── end new ──
-    image:
-      repository: k3d-registry.localhost:5000/podinfo
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: bigger steps, release two"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-base --with-source
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-kubectl --context k3d-dev get canaries -n podinfo -w
-```
-
-Fewer, bigger steps. Back to 10:
-
-**Replace `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
-apiVersion: flagger.app/v1beta1
-kind: Canary
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  targetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: podinfo
-  service:
-    port: 9898
-    hosts: ["podinfo.${CLUSTER_DOMAIN}"]
-    gatewayRefs:
-      - name: web
-        namespace: gateway
-  analysis:
-    interval: 30s
-    threshold: 3
-    # ── new ──
-    stepWeight: 10
-    # ── end new ──
-    maxWeight: 50
-    webhooks:
-      - name: load
-        url: http://loadtester.podinfo/
-        metadata:
-          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.${CLUSTER_DOMAIN} http://cilium-gateway-web.gateway/"
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: steps of 10"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-base --with-source
-```
-
-### 3. A faulty release, with nothing watching
+### 2. A faulty release, with nothing watching
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
@@ -513,7 +410,7 @@ kubectl --context k3d-dev get canaries -n podinfo -w
 
 Wait for `Succeeded`.
 
-### 4. A metric check, and the faulty release again
+### 3. A metric check, and the faulty release again
 
 A MetricTemplate using Hubble's HTTP metrics. `destination_workload` and
 `destination_namespace` only exist with the `labelsContext` option from lesson

@@ -389,147 +389,18 @@ kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls
 
 sofka / k9s: `:secrets default`, `x` on `test-tls`
 
-### 1. A second name
+### Changes worth knowing
 
-**Replace `~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: test
-  namespace: default
-spec:
-  secretName: test-tls
-  # ── new ──
-  dnsNames: [test.kube.internal, a.kube.internal]
-  # ── end new ──
-  duration: 24h
-  renewBefore: 1h
-  issuerRef:
-    kind: ClusterIssuer
-    name: local-ca
-```
+Each row is one commit, then its revert. What happens is the point; try any you like.
 
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, second name"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-dev-config --with-source
-kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls\.crt}' \
-  | base64 -d | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
-```
+| Change to the test Certificate | What happens |
+| --- | --- |
+| `dnsNames: [test.kube.internal, a.kube.internal]` | Reissued. `openssl x509 -noout -ext subjectAltName` on `tls.crt` shows both. |
+| `issuerRef.name: nope` | Flux applies it and reports Ready; cert-manager waits, and `describe certificate test` says the issuer isn't found. Flux's Ready says nothing about cert-manager's. |
+| `duration: 1h`, `renewBefore: 59m` | A new CertificateRequest every minute or so. |
+| `kubectl --context k3d-dev -n default delete secret test-tls`, no commit | cert-manager issues it again: it owns the Secret, Flux doesn't. |
 
-The Secret is reissued, and `openssl` shows both names.
-
-### 2. An issuer that doesn't exist
-
-**Replace `~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: test
-  namespace: default
-spec:
-  secretName: test-tls
-  dnsNames: [test.kube.internal, a.kube.internal]
-  duration: 24h
-  renewBefore: 1h
-  issuerRef:
-    kind: ClusterIssuer
-    # ── new ──
-    name: nope
-    # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, missing issuer"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-dev-config --with-source
-kubectl --context k3d-dev -n default describe certificate test
-```
-
-Flux applied it fine; cert-manager waits, and says why. Put the issuer back:
-
-**Replace `~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: test
-  namespace: default
-spec:
-  secretName: test-tls
-  dnsNames: [test.kube.internal, a.kube.internal]
-  duration: 24h
-  renewBefore: 1h
-  issuerRef:
-    kind: ClusterIssuer
-    # ── new ──
-    name: local-ca
-    # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, issuer back"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-dev-config --with-source
-kubectl --context k3d-dev -n default get certificate test
-```
-
-### 3. Renew every minute
-
-**Replace `~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml`**
-```yaml
-# ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: test
-  namespace: default
-spec:
-  secretName: test-tls
-  dnsNames: [test.kube.internal, a.kube.internal]
-  # ── new ──
-  duration: 1h
-  renewBefore: 59m
-  # ── end new ──
-  issuerRef:
-    kind: ClusterIssuer
-    name: local-ca
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
-git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, renew every minute"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization infra-dev-config --with-source
-kubectl --context k3d-dev get certificaterequests -n default -w
-```
-
-A new request every minute or so.
-
-### 4. Delete the Secret
-
-No file change: cert-manager, not Flux, owns the Secret.
-
-```sh
-kubectl --context k3d-dev -n default delete secret test-tls
-kubectl --context k3d-dev -n default get secret test-tls -w
-```
-
-cert-manager notices and issues again.
-
-sofka / k9s: `d` on the Certificate, `:certificaterequests default`.
-sofka extras ([lesson 0](00-tools.md)): `X` gives the Certificate's `Ready`
-reason, and `u` then `c` walks to the requests it owns.
-
-### 5. Remove it
+### 1. Remove it
 
 ```sh
 git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/test-certificate.yaml
@@ -545,9 +416,7 @@ behind, so delete that last one by hand.
 
 ## Exercises
 
-1. Read the certificate Zen got (padlock > connection > more information) and
-   match its issuer to `mkcert -CAROOT`.
-2. Redirect HTTP to HTTPS: an HTTPRoute in
+1. Redirect HTTP to HTTPS: an HTTPRoute in
    `~/repos/personal/kube_local/infrastructure/base/gateway/redirect.yaml` with `parentRefs` the Gateway
    and `sectionName: http`, hostname `*.${CLUSTER_DOMAIN}`, and one rule with a
    `RequestRedirect` filter (`scheme: https`, `statusCode: 301`). Then give
@@ -598,8 +467,8 @@ behind, so delete that last one by hand.
              port: 9898
    ```
 
-3. Rebuild the cluster and bring HTTPS back without trusting anything again.
-4. Harder: give a route the hostname `a.b.kube.internal`. Work out why Zen
+2. Rebuild the cluster and bring HTTPS back without trusting anything again.
+3. Harder: give a route the hostname `a.b.kube.internal`. Work out why Zen
    rejects the certificate, then fix it with a second HTTPS listener for
    `*.b.kube.internal`.
 

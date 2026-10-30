@@ -364,132 +364,19 @@ A random demo pod dies each minute, and each run leaves a PodChaos in
 `chaos`: `kubectl --context k3d-dev get podchaos -n chaos`. Which ones does the
 shop notice?
 
-### 2. Half the namespace
+### Changes worth knowing
 
-**Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
-```yaml
-# ~/repos/personal/kube_local/chaos/pod-kill.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: Schedule
-metadata:
-  name: pod-kill
-  namespace: chaos
-  annotations:
-    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
-spec:
-  schedule: "@every 1m"
-  type: PodChaos
-  historyLimit: 5
-  concurrencyPolicy: Forbid
-  podChaos:
-    # ── new ──
-    action: pod-kill
-    mode: fixed-percent
-    value: "50"
-    # ── end new ──
-    selector:
-      namespaces: [otel-demo]
-```
+Each row is one commit, then its revert. What happens is the point; try any you like.
 
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/chaos/pod-kill.yaml
-git -C ~/repos/personal/kube_local commit -m "pod-kill: half the namespace"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization chaos --with-source
-kubectl --context k3d-dev get pods -n otel-demo -w
-```
+Do these with the switch on, before pausing everything again.
 
-### 3. Kill a container, not the pod
+| Change | File | What happens |
+| --- | --- | --- |
+| `action: pod-kill`, `mode: fixed-percent`, `value: "50"` | `~/repos/personal/kube_local/chaos/pod-kill.yaml` | Half the namespace dies each run. |
+| `action: container-kill`, `mode: one`, `containerNames: [cart]`, selector `app.kubernetes.io/component: cart` | `~/repos/personal/kube_local/chaos/pod-kill.yaml` | `RESTARTS` goes up; the pod survives. |
+| A one-off `NetworkChaos`, `delay.latency: 200ms`, `duration: 2m`, on cart, with the same pause annotation | `~/repos/personal/kube_local/chaos/latency-now.yaml` | Slow cart spans in Jaeger for two minutes. It runs once, so `git rm` it afterwards. |
 
-**Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
-```yaml
-# ~/repos/personal/kube_local/chaos/pod-kill.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: Schedule
-metadata:
-  name: pod-kill
-  namespace: chaos
-  annotations:
-    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
-spec:
-  schedule: "@every 1m"
-  type: PodChaos
-  historyLimit: 5
-  concurrencyPolicy: Forbid
-  podChaos:
-    # ── new ──
-    action: container-kill
-    mode: one
-    containerNames: [cart]
-    # ── end new ──
-    selector:
-      namespaces: [otel-demo]
-      # ── new ──
-      labelSelectors:
-        app.kubernetes.io/component: cart
-      # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/chaos/pod-kill.yaml
-git -C ~/repos/personal/kube_local commit -m "container-kill on cart"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization chaos --with-source
-kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=cart -w
-```
-
-`RESTARTS` goes up; the pod survives.
-
-### 4. 200ms latency on cart, now
-
-The latency Schedule runs every 15 minutes. For one run now, a one-off in the
-same folder, under the same switch:
-
-**Write `~/repos/personal/kube_local/chaos/latency-now.yaml`**
-```yaml
-# ~/repos/personal/kube_local/chaos/latency-now.yaml
-apiVersion: chaos-mesh.org/v1alpha1
-kind: NetworkChaos
-metadata:
-  name: cart-latency-now
-  namespace: chaos
-  annotations:
-    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
-spec:
-  action: delay
-  mode: all
-  selector:
-    namespaces: [otel-demo]
-    labelSelectors:
-      app.kubernetes.io/component: cart
-  delay:
-    latency: 200ms
-  duration: 2m
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/chaos/latency-now.yaml
-git -C ~/repos/personal/kube_local commit -m "Latency on cart, once"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization chaos --with-source
-kubectl --context k3d-dev -n chaos describe networkchaos cart-latency-now
-```
-
-Slow spans in Jaeger for the next two minutes. A one-off runs once, so remove
-it from Git once it's done:
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/chaos/latency-now.yaml
-git -C ~/repos/personal/kube_local commit -m "Drop the one-off latency"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization chaos --with-source
-```
-
-### 5. Pause everything
+### 2. Pause everything
 
 Back to the install's experiments, paused:
 

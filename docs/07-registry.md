@@ -139,118 +139,23 @@ sofka / k9s: `:pods podinfo`, `d`, the `Image ID` line. sofka extra
 
 ## Iterate
 
-Each step changes `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml` and ends where it started:
-the mirror, tag `6.7.0`. New or changed lines sit between `# ── new ──` and
-`# ── end new ──`.
+Everything here changes `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml` and ends where
+it started: the mirror, tag `6.7.0`. New or changed lines sit between
+`# ── new ──` and `# ── end new ──`.
 
-### 1. `localhost` from inside the cluster
+### Changes worth knowing
 
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-dev
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      message: k3d
-    image:
-      # ── new ──
-      repository: localhost:5050/podinfo
-      # ── end new ──
-      tag: 6.7.0
-```
+Each row is one commit, then its revert. What happens is the point; try any you like.
 
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: pull from localhost"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-kubectl --context k3d-dev -n podinfo get pods
-```
+| Change | What happens |
+| --- | --- |
+| `image.repository: localhost:5050/podinfo` in `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml` | The new pod is stuck in `ErrImagePull`: inside the cluster, `localhost` is the node. The old pods keep serving, because the rollout never got a new pod ready. |
+| `image.tag: 6.7.0@sha256:<digest>`, the digest from `skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0` | Works, and can't change under you whatever happens to the tag. The chart builds `repository:tag`, so the digest goes after the tag. |
+| `skopeo copy` without `--all`, to `localhost:5050/podinfo:6.7.0-single`, then compare digests with upstream | They differ: only your architecture was copied, not the manifest list. |
 
-The new pod is stuck in `ErrImagePull`: inside the cluster, `localhost` is the
-node itself. The old pods keep serving, because the rollout never got a new
-pod ready. Put it back:
+### 1. Move a tag under running pods
 
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-dev
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      message: k3d
-    image:
-      # ── new ──
-      repository: k3d-registry.localhost:5000/podinfo
-      # ── end new ──
-      tag: 6.7.0
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: pull from the mirror"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-kubectl --context k3d-dev -n podinfo get pods
-```
-
-### 2. Pin by digest
-
-The digest from the mirror, the same as upstream:
-
-```sh
-skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0
-```
-
-The chart builds `repository:tag`, so the digest goes after the tag:
-
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-dev
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      message: k3d
-    image:
-      repository: k3d-registry.localhost:5000/podinfo
-      # ── new ──
-      tag: 6.7.0@sha256:d2b3cd93a48acdc91327533ce28fcb3169b2d9feaf73817dc2eb68858df64edb
-      # ── end new ──
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: pin by digest"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
-```
-
-It works, and can never change under you, whatever happens to the tag.
-
-### 3. Move a tag under running pods
-
-Back to the bare tag, pulled every time a pod starts:
+Pull on every pod start, so the next restart sees whatever the tag points at:
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
@@ -335,20 +240,6 @@ git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev -n podinfo get pods
 ```
-
-### 4. Copy one architecture only
-
-Registry only, nothing in Git:
-
-```sh
-skopeo copy --dest-tls-verify=false \
-  docker://ghcr.io/stefanprodan/podinfo:6.7.0 \
-  docker://localhost:5050/podinfo:6.7.0-single
-skopeo inspect --format '{{.Digest}}' docker://ghcr.io/stefanprodan/podinfo:6.7.0
-skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050/podinfo:6.7.0-single
-```
-
-Different digests: without `--all`, only your architecture was copied.
 
 ## Exercises
 

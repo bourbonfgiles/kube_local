@@ -234,84 +234,15 @@ on the Deployment has one revision per Flux commit.
 
 ## Iterate
 
-Each step changes the policy in Git, and Flux answers with its own commit.
-New or changed lines sit between `# ── new ──` and `# ── end new ──`.
+### Changes worth knowing
 
-### 1. Pin one version
+Each row is one commit, then its revert. What happens is the point; try any you like.
 
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/image.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  image: k3d-registry.localhost:5000/podinfo
-  interval: 1m
-  insecure: true
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  imageRepositoryRef:
-    name: podinfo
-  policy:
-    # ── new ──
-    semver:
-      range: "6.7.0"
-    # ── end new ──
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageUpdateAutomation
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
-  git:
-    checkout:
-      ref:
-        branch: master
-    commit:
-      author:
-        name: fluxcdbot
-        email: fluxcdbot@users.noreply.github.com
-    push:
-      branch: master
-  update:
-    path: ./apps
-    strategy: Setters
-```
+Every row changes the ImagePolicy in `~/repos/personal/kube_local/apps/dev/podinfo/image.yaml`,
+and Flux answers with its own commit. The prerelease rows need one in the
+registry first:
 
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: pin 6.7.0"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-flux --context k3d-dev get images policy podinfo -n podinfo
-flux --context k3d-dev reconcile image update podinfo -n podinfo
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local log -1 --oneline
-kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
-```
-
-Pinned: Flux commits `6.7.0` even though `6.7.1` exists, and podinfo rolls
-back. A rollback is just another policy.
-
-### 2. A prerelease, and the original range
-
-Mirror a prerelease, re-tagged from an upstream image, and scan for it now:
-
+**Example only: mirror a prerelease**
 ```sh
 skopeo copy --all --dest-tls-verify=false \
   docker://ghcr.io/stefanprodan/podinfo:6.7.1 \
@@ -319,295 +250,25 @@ skopeo copy --all --dest-tls-verify=false \
 flux --context k3d-dev reconcile image repository podinfo -n podinfo
 ```
 
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/image.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  image: k3d-registry.localhost:5000/podinfo
-  interval: 1m
-  insecure: true
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  imageRepositoryRef:
-    name: podinfo
-  policy:
-    # ── new ──
-    semver:
-      range: ">=6.0.0 <7.0.0"
-    # ── end new ──
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageUpdateAutomation
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
-  git:
-    checkout:
-      ref:
-        branch: master
-    commit:
-      author:
-        name: fluxcdbot
-        email: fluxcdbot@users.noreply.github.com
-    push:
-      branch: master
-  update:
-    path: ./apps
-    strategy: Setters
-```
+| Policy | What runs |
+| --- | --- |
+| `semver.range: "6.7.0"` | `6.7.0`, though `6.7.1` exists: Flux commits the older tag and podinfo rolls back. A rollback is just another policy. |
+| `semver.range: ">=6.0.0 <7.0.0"`, with `6.8.0-rc.1` mirrored | Still `6.7.1`: semver ranges skip prereleases. |
+| `semver.range: ">=6.0.0-0"` | `6.8.0-rc.1`: the `-0` lets prereleases in. |
+| `alphabetical: {order: asc}` | Whichever tag sorts last as a string. That's why semver exists. |
 
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: semver 6.x"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-flux --context k3d-dev get images policy podinfo -n podinfo
-flux --context k3d-dev reconcile image update podinfo -n podinfo
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local log -1 --oneline
-kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
-```
-
-`6.7.1` again: semver ranges skip prereleases.
-
-### 3. Let prereleases in
-
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/image.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  image: k3d-registry.localhost:5000/podinfo
-  interval: 1m
-  insecure: true
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  imageRepositoryRef:
-    name: podinfo
-  policy:
-    # ── new ──
-    semver:
-      range: ">=6.0.0-0"
-    # ── end new ──
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageUpdateAutomation
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
-  git:
-    checkout:
-      ref:
-        branch: master
-    commit:
-      author:
-        name: fluxcdbot
-        email: fluxcdbot@users.noreply.github.com
-    push:
-      branch: master
-  update:
-    path: ./apps
-    strategy: Setters
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: allow prereleases"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-flux --context k3d-dev get images policy podinfo -n podinfo
-flux --context k3d-dev reconcile image update podinfo -n podinfo
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local log -1 --oneline
-kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
-```
-
-Now `6.8.0-rc.1` wins, and it's what runs.
-
-### 4. Alphabetical instead of semver
-
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/image.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  image: k3d-registry.localhost:5000/podinfo
-  interval: 1m
-  insecure: true
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  imageRepositoryRef:
-    name: podinfo
-  policy:
-    # ── new ──
-    alphabetical:
-      order: asc
-    # ── end new ──
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageUpdateAutomation
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
-  git:
-    checkout:
-      ref:
-        branch: master
-    commit:
-      author:
-        name: fluxcdbot
-        email: fluxcdbot@users.noreply.github.com
-    push:
-      branch: master
-  update:
-    path: ./apps
-    strategy: Setters
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: alphabetical"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-flux --context k3d-dev get images policy podinfo -n podinfo
-flux --context k3d-dev reconcile image update podinfo -n podinfo
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local log -1 --oneline
-kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
-```
-
-It sorts tags as strings, so whichever sorts last wins. That's why semver
-exists.
-
-### 5. Back to the original range
-
-**Replace `~/repos/personal/kube_local/apps/dev/podinfo/image.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  image: k3d-registry.localhost:5000/podinfo
-  interval: 1m
-  insecure: true
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImagePolicy
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  imageRepositoryRef:
-    name: podinfo
-  policy:
-    # ── new ──
-    semver:
-      range: ">=6.0.0 <7.0.0"
-    # ── end new ──
----
-apiVersion: image.toolkit.fluxcd.io/v1
-kind: ImageUpdateAutomation
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 5m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-    namespace: flux-system
-  git:
-    checkout:
-      ref:
-        branch: master
-    commit:
-      author:
-        name: fluxcdbot
-        email: fluxcdbot@users.noreply.github.com
-    push:
-      branch: master
-  update:
-    path: ./apps
-    strategy: Setters
-```
-
-```sh
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/image.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: semver 6.x"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-dev --with-source
-flux --context k3d-dev get images policy podinfo -n podinfo
-flux --context k3d-dev reconcile image update podinfo -n podinfo
-git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local log -1 --oneline
-kubectl --context k3d-dev -n podinfo get deploy podinfo -o jsonpath='{..image}'
-```
-
-`6.7.1`, the latest stable.
+Check each with `flux --context k3d-dev get images policy podinfo -n podinfo`.
+End on `">=6.0.0 <7.0.0"`.
 
 ## Exercises
 
-1. Read Flux's commit: what changed, and who's the author.
-2. Two environments: namespaces `podinfo-dev` and `podinfo-prod`, each with
+1. Two environments: namespaces `podinfo-dev` and `podinfo-prod`, each with
    its own HelmRelease, policy and automation (automations only see their own
    namespace's policies). `dev` takes prereleases (`>=6.0.0-0`); `prod` only
    stable.
-3. Promote: mirror `6.8.0-rc.1`. Only `dev` moves. Mirror the same image as
+2. Promote: mirror `6.8.0-rc.1`. Only `dev` moves. Mirror the same image as
    `6.8.0`; `prod` follows.
-4. Harder: gate `prod` with review. Set its automation's `git.push.branch:
+3. Harder: gate `prod` with review. Set its automation's `git.push.branch:
    flux-image-updates`, so Flux pushes there instead, and promotion becomes
    merging a PR.
 
