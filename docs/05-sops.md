@@ -168,8 +168,8 @@ kubectl --context k3d-dev -n external-dns get secret externaldns-tsig -o yaml
 `kustomize.toolkit.fluxcd.io` labels show Flux has taken over the Secret you
 made by hand.
 
-sofka / k9s: `:kustomizations -n flux-system`, then
-`:secrets -n external-dns`, `x`. Who owns it: sofka `:gitops` on the Secret;
+sofka / k9s: `:kustomizations flux-system`, then
+`:secrets external-dns`, `x`. Who owns it: sofka `:gitops` on the Secret;
 k9s `Shift-q` (dotfiles plugin).
 
 ## Iterate
@@ -189,7 +189,7 @@ kubectl --context k3d-dev -n default get secret demo -o jsonpath='{.data.passwor
 
 `hunter2`, decrypted by kustomize-controller.
 
-sofka / k9s: `:secrets -n default`, `x` on `demo`
+sofka / k9s: `:secrets default`, `x` on `demo`
 
 ### 1. Edit it encrypted, and what Git sees
 
@@ -269,7 +269,7 @@ kubectl --context k3d-dev -n default get secret demo
 - `sops-age` is the one Secret recreated by hand after every rebuild. Until it
   exists, `secrets` fails with a decryption error:
   `kubectl --context k3d-dev -n flux-system describe kustomization secrets`
-  shows it. In sofka or k9s, `ctrl-z` on `:kustomizations -A`; sofka's `X`
+  shows it. In sofka or k9s, `ctrl-z` on `:kustomizations all`; sofka's `X`
   gives the message ([lesson 0](00-tools.md)).
 - `bootstrap.sh` generates a new TSIG key for each new cluster. After a
   rebuild BIND has a key Git doesn't; redo step 4 and push.

@@ -200,11 +200,11 @@ The shape: every workload, and the Services between them. A `Pending` pod
 says why in
 `kubectl --context k3d-dev get events -n otel-demo --field-selector reason=FailedScheduling`.
 
-sofka / k9s: `:pods -n otel-demo`, `ctrl-z` for stragglers, `d` on one. They
+sofka / k9s: `:pods otel-demo`, `ctrl-z` for stragglers, `d` on one. They
 differ on the shape:
 
 - sofka: `:workloads otel-demo` for every workload in one list; `:xray` from
-  `:deploy -n otel-demo`. `X` on a `Pending` pod ([lesson 0](00-tools.md)).
+  `:deploy otel-demo`. `X` on a `Pending` pod ([lesson 0](00-tools.md)).
 - k9s: `:xray deploy otel-demo`.
 
 ExternalDNS names the route. Open `https://otel.kube.internal/` for the shop,

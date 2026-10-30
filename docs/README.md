@@ -65,8 +65,7 @@ mistake:
 | --- | --- |
 | `kubectl`, `flux`, `cilium` | `--context k3d-dev` |
 | `helm` | `--kube-context k3d-dev` |
-| `sofka` | `sofka --context k3d-dev` |
-| `k9s` | `k9s --context k3d-dev` |
+| `sofka`, `k9s` | Launched bare; `:ctx`, then `k3d-dev`, inside the app |
 
 `hubble` takes no context: it talks to the port-forward that
 `cilium --context k3d-dev hubble port-forward` opens. `dig`, `curl`, `skopeo`,
@@ -131,7 +130,9 @@ that mapping.
 ## Working in sofka and k9s
 
 Every object in these lessons has a view in both: `:` then the resource's
-plural name (`:gateways`, `:httproutes`, `:helmreleases`, `:certificates`).
+plural name (`:gateways`, `:httproutes`, `:helmreleases`, `:certificates`),
+then the namespace as a word: `:pods podinfo`, or `:pods all`. No `-n` or `-A`
+inside the apps.
 The lessons give the kubectl command first, then a `sofka / k9s:` line; the
 keys are the same in both unless that line splits them. [Lesson 0](00-tools.md) has the full side by side, with kubectl.
 
@@ -145,9 +146,9 @@ keys are the same in both unless that line splits them. [Lesson 0](00-tools.md) 
 | Decode a Secret | `x` | `x` |
 | Port-forward, for UIs such as Grafana | `f` or `Shift-f` | `Shift-f` |
 | Only what's broken | `ctrl-z` | `ctrl-z` |
-| Dependency tree | `:deploy -n podinfo`, then `:xray` | `:xray deploy podinfo` |
+| Dependency tree | `:deploy podinfo`, then `:xray` | `:xray deploy podinfo` |
 | Flux reconcile, suspend, resume | `t` | dotfiles plugins: `Shift-r`, `Shift-t` |
-| Flux ownership chain | `:gitops` | `Shift-q` (plugin, runs `flux trace`) |
+| Flux ownership chain | `:gitops` on the highlighted object | `Shift-q` (plugin, runs `flux trace`) |
 
 The `flux` CLI covers the rest: `flux diff`, `flux events`.
 

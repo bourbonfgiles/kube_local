@@ -84,7 +84,7 @@ The Service table that replaces kube-proxy, from inside a Cilium agent:
 kubectl --context k3d-dev -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg service list
 ```
 
-sofka / k9s: `:pods -n kube-system`, `s` on a `cilium-` pod (not the
+sofka / k9s: `:pods kube-system`, `s` on a `cilium-` pod (not the
 operator), then `cilium-dbg service list`.
 
 Each ClusterIP and its backends, in an eBPF map instead of iptables.
@@ -121,7 +121,7 @@ kubectl --context k3d-dev get svc -n demo
 
 `blue-podinfo` and `green-podinfo` on port 9898.
 
-sofka / k9s: `:svc -n demo`
+sofka / k9s: `:svc demo`
 
 ### 2. A Gateway
 
@@ -158,7 +158,7 @@ Wait for `PROGRAMMED True` with an address, usually `10.89.0.200`.
 `kubectl --context k3d-dev get svc -n gateway` shows the LoadBalancer Service
 Cilium created for it.
 
-sofka / k9s: `:gateways -A`, then `:svc -n gateway`
+sofka / k9s: `:gateways all`, then `:svc gateway`
 
 ### 3. A route, one step at a time
 
@@ -348,7 +348,7 @@ kubectl --context k3d-dev -n demo describe httproute demo
 kubectl --context k3d-dev -n demo get httproute demo -o yaml
 ```
 
-sofka / k9s: `:httproutes -n demo`, `d` for conditions, `y` for the YAML.
+sofka / k9s: `:httproutes demo`, `d` for conditions, `y` for the YAML.
 sofka also lists the matched paths in its `ROUTES` column.
 
 ### 4. Clean up

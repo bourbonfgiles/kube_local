@@ -346,7 +346,7 @@ curl -s https://podinfo.kube.internal/ | jq .message
 ```
 
 Then open <https://podinfo.kube.internal/> in Zen. sofka / k9s:
-`:clusterissuers`, then `:certificates -n gateway`.
+`:clusterissuers`, then `:certificates gateway`.
 
 ## Iterate
 
@@ -381,7 +381,7 @@ kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls
   | base64 -d | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
 ```
 
-sofka / k9s: `:secrets -n default`, `x` on `test-tls`
+sofka / k9s: `:secrets default`, `x` on `test-tls`
 
 ### 1. A second name
 
@@ -519,7 +519,7 @@ kubectl --context k3d-dev -n default get secret test-tls -w
 
 cert-manager notices and issues again.
 
-sofka / k9s: `d` on the Certificate, `:certificaterequests -n default`.
+sofka / k9s: `d` on the Certificate, `:certificaterequests default`.
 sofka extras ([lesson 0](00-tools.md)): `X` gives the Certificate's `Ready`
 reason, and `u` then `c` walks to the requests it owns.
 

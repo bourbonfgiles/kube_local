@@ -359,8 +359,8 @@ kubectl --context k3d-dev describe nodes -l karpenter.sh/nodepool=default   # Al
 kubectl --context k3d-dev -n kube-system logs deploy/karpenter -f
 ```
 
-sofka / k9s: `ctrl-z` on `:pods -n default`, `d` on a pod or node;
-`:pods -n kube-system`, `l` on `karpenter`. sofka extras: `X` on a pod, and
+sofka / k9s: `ctrl-z` on `:pods default`, `d` on a pod or node;
+`:pods kube-system`, `l` on `karpenter`. sofka extras: `X` on a pod, and
 `:nodes` has `%CPU/R`.
 
 > [!TIP]

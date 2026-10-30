@@ -180,7 +180,7 @@ The first start downloads the server jar, so pods need working external DNS.
 When it logs `Done`, join from a client at this machine's LAN address, port
 25565.
 
-sofka / k9s: `:pods -n minecraft`, `l`
+sofka / k9s: `:pods minecraft`, `l`
 
 The console:
 
@@ -200,13 +200,13 @@ kubectl --context k3d-dev -n minecraft top pod
 kubectl --context k3d-dev get pvc -n minecraft
 ```
 
-sofka / k9s: `d` on the pod for `OOMKilled`; `:pvc -n minecraft`. They differ
+sofka / k9s: `d` on the pod for `OOMKilled`; `:pvc minecraft`. They differ
 on memory:
 
 - sofka: `⏎` on the pod shows memory as a share of request and limit, with a
   five-minute trend; `X` says `OOMKilled`; `x` on the PVC browses its files
   through the server pod ([lesson 0](00-tools.md)).
-- k9s: the `%MEM/L` column in `:pods -n minecraft`.
+- k9s: the `%MEM/L` column in `:pods minecraft`.
 
 New or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
