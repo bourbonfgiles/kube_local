@@ -1,0 +1,14 @@
+# clusters/dev/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/base
+  prune: true
