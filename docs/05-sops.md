@@ -169,7 +169,7 @@ kubectl --context k3d-dev -n default delete secret demo
 
 1. Rules, so you don't pass flags each time:
 
-   **`.sops.yaml`**
+   **Write `.sops.yaml`**
    ```yaml
    # .sops.yaml
    creation_rules:
@@ -202,7 +202,7 @@ kubectl --context k3d-dev -n default delete secret demo
    ```
 5. The Kustomization that decrypts:
 
-   **`clusters/dev/secrets.yaml`**
+   **Write `clusters/dev/secrets.yaml`**
    ```yaml
    # clusters/dev/secrets.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1

@@ -132,7 +132,7 @@ helm --kube-context k3d-dev upgrade --install karpenter kwok/charts -n kube-syst
 Back in this repo. The taint keeps everything that doesn't ask for fake nodes
 off them:
 
-**`scratch/12/nodepool.yaml`**
+**Write `scratch/12/nodepool.yaml`**
 ```yaml
 # scratch/12/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
@@ -164,7 +164,7 @@ spec:
 
 ### 6. Something to schedule
 
-**`scratch/12/inflate.yaml`**
+**Write `scratch/12/inflate.yaml`**
 ```yaml
 # scratch/12/inflate.yaml
 apiVersion: apps/v1
@@ -250,7 +250,7 @@ Consolidation removes nodes, after `consolidateAfter`.
 <details>
 <summary>2. Only empty nodes go</summary>
 
-**`scratch/12/nodepool.yaml`**
+**Replace `scratch/12/nodepool.yaml`**
 ```yaml
 # scratch/12/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
@@ -305,7 +305,7 @@ Empty nodes go; half-empty ones stay.
 <details>
 <summary>3. A CPU limit on the pool</summary>
 
-**`scratch/12/nodepool.yaml`**
+**Replace `scratch/12/nodepool.yaml`**
 ```yaml
 # scratch/12/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
@@ -349,7 +349,7 @@ kubectl --context k3d-dev get events -A --field-selector involvedObject.kind=Nod
 
 Some pods stay `Pending`, and the events say the limit was hit. Back to 64:
 
-**`scratch/12/nodepool.yaml`**
+**Replace `scratch/12/nodepool.yaml`**
 ```yaml
 # scratch/12/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
@@ -393,7 +393,7 @@ kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
 <details>
 <summary>4. One node at a time</summary>
 
-**`scratch/12/nodepool.yaml`**
+**Replace `scratch/12/nodepool.yaml`**
 ```yaml
 # scratch/12/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
@@ -446,7 +446,7 @@ kubectl --context k3d-dev get nodeclaims,nodes -w
 Consolidation removes one node at a time. Put the NodePool back as it was in
 step 5:
 
-**`scratch/12/nodepool.yaml`**
+**Replace `scratch/12/nodepool.yaml`**
 ```yaml
 # scratch/12/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
@@ -509,7 +509,7 @@ instead.
    Flux installs the chart's `crds/` itself. The values ConfigMap holds
    `karpenter-values.yaml` plus the image's tag and digest.
    <details>
-   <summary>Karpenter as Flux files</summary>
+   <summary>Files to write: Karpenter</summary>
 
    The tag and digest come from your build, so set them again (a new shell
    loses them) and write the source and values from them, in this repo's root:
@@ -521,7 +521,7 @@ instead.
    mkdir -p infrastructure/local/karpenter
    ```
 
-   **`infrastructure/local/karpenter/source.yaml`**
+   **Write `infrastructure/local/karpenter/source.yaml`**
    ```sh
    cat > infrastructure/local/karpenter/source.yaml <<EOF
    # infrastructure/local/karpenter/source.yaml
@@ -538,7 +538,7 @@ instead.
    EOF
    ```
 
-   **`infrastructure/local/karpenter/values.yaml`**
+   **Write `infrastructure/local/karpenter/values.yaml`**
    ```sh
    cat > infrastructure/local/karpenter/values.yaml <<EOF
    # infrastructure/local/karpenter/values.yaml
@@ -575,7 +575,7 @@ instead.
 
    The release has nothing build-specific:
 
-   **`infrastructure/local/karpenter/release.yaml`**
+   **Write `infrastructure/local/karpenter/release.yaml`**
    ```yaml
    # infrastructure/local/karpenter/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
@@ -600,7 +600,7 @@ instead.
 2. The NodePool needs Karpenter's CRDs, so it goes in `infra-local-config`
    (lesson 4), unchanged from `scratch/12/`:
 
-   **`infrastructure/local-config/karpenter/nodepool.yaml`**
+   **Write `infrastructure/local-config/karpenter/nodepool.yaml`**
    ```yaml
    # infrastructure/local-config/karpenter/nodepool.yaml
    apiVersion: karpenter.kwok.sh/v1alpha1

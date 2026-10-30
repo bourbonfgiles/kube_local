@@ -50,7 +50,7 @@ or `k9s` ([lesson 0](00-tools.md)).
 
 ### 1. Chaos Mesh
 
-**`scratch/14/values-local.yaml`**
+**Write `scratch/14/values-local.yaml`**
 ```yaml
 # scratch/14/values-local.yaml
 chaosDaemon:
@@ -80,7 +80,7 @@ sofka / k9s: `:pods -n chaos-mesh`; forward on `:svc -n chaos-mesh` with sofka
 
 Before scheduling anything, kill one pod by hand:
 
-**`scratch/14/pod-kill.yaml`**
+**Write `scratch/14/pod-kill.yaml`**
 ```yaml
 # scratch/14/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -128,7 +128,7 @@ re-create the experiment. New or changed lines sit between `# ── new ──`
 
 The same file with `labelSelectors` removed:
 
-**`scratch/14/pod-kill.yaml`**
+**Replace `scratch/14/pod-kill.yaml`**
 ```yaml
 # scratch/14/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -156,7 +156,7 @@ A random demo pod dies each time. Which ones does the shop notice?
 <details>
 <summary>2. Half the namespace</summary>
 
-**`scratch/14/pod-kill.yaml`**
+**Replace `scratch/14/pod-kill.yaml`**
 ```yaml
 # scratch/14/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -187,7 +187,7 @@ Half the namespace at once.
 <details>
 <summary>3. Kill a container, not the pod</summary>
 
-**`scratch/14/pod-kill.yaml`**
+**Replace `scratch/14/pod-kill.yaml`**
 ```yaml
 # scratch/14/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -223,7 +223,7 @@ kubectl --context k3d-dev -n otel-demo get pods -l app.kubernetes.io/component=c
 The container restarts (`RESTARTS` goes up); the pod survives. Put the file
 back as it was in "One experiment, once":
 
-**`scratch/14/pod-kill.yaml`**
+**Replace `scratch/14/pod-kill.yaml`**
 ```yaml
 # scratch/14/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -247,7 +247,7 @@ spec:
 <details>
 <summary>4. 200ms latency on cart for two minutes</summary>
 
-**`scratch/14/latency.yaml`**
+**Write `scratch/14/latency.yaml`**
 ```yaml
 # scratch/14/latency.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -321,9 +321,9 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
 1. **The chart.** The HelmRelease reads only the local ConfigMap, which holds
    `scratch/14/values-local.yaml` unchanged.
    <details>
-   <summary>Chaos Mesh as Flux files</summary>
+   <summary>Files to write: Chaos Mesh</summary>
 
-   **`infrastructure/base/chaos-mesh/namespace.yaml`**
+   **Write `infrastructure/base/chaos-mesh/namespace.yaml`**
    ```yaml
    # infrastructure/base/chaos-mesh/namespace.yaml
    apiVersion: v1
@@ -332,7 +332,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
      name: chaos-mesh
    ```
 
-   **`infrastructure/base/chaos-mesh/source.yaml`**
+   **Write `infrastructure/base/chaos-mesh/source.yaml`**
    ```yaml
    # infrastructure/base/chaos-mesh/source.yaml
    apiVersion: source.toolkit.fluxcd.io/v1
@@ -345,7 +345,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
      url: https://charts.chaos-mesh.org
    ```
 
-   **`infrastructure/base/chaos-mesh/release.yaml`**
+   **Write `infrastructure/base/chaos-mesh/release.yaml`**
    ```yaml
    # infrastructure/base/chaos-mesh/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
@@ -367,7 +367,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
          name: chaos-mesh-values-local
    ```
 
-   **`infrastructure/local/chaos-mesh/values.yaml`**
+   **Write `infrastructure/local/chaos-mesh/values.yaml`**
    ```yaml
    # infrastructure/local/chaos-mesh/values.yaml
    apiVersion: v1
@@ -386,7 +386,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
          securityMode: false   # no login; local only
    ```
 
-   **`infrastructure/local/chaos-mesh/route.yaml`**
+   **Write `infrastructure/local/chaos-mesh/route.yaml`**
    ```yaml
    # infrastructure/local/chaos-mesh/route.yaml
    apiVersion: gateway.networking.k8s.io/v1
@@ -409,7 +409,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
 2. **The switch.** Experiments get their own folder and Kustomization, so one
    variable reaches all of them, and so they apply only after the CRDs exist:
 
-   **`clusters/dev/chaos.yaml`**
+   **Write `clusters/dev/chaos.yaml`**
    ```yaml
    # clusters/dev/chaos.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -436,7 +436,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
    `./chaos` before applying. `${CHAOS_PAUSED:=true}` means "true if unset".
 3. **Experiments on a schedule**, each with the annotation:
 
-   **`chaos/pod-kill.yaml`**
+   **Write `chaos/pod-kill.yaml`**
    ```yaml
    # chaos/pod-kill.yaml
    apiVersion: chaos-mesh.org/v1alpha1
@@ -460,7 +460,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
 
    Plus the namespace, and the latency experiment from above on a schedule:
 
-   **`chaos/namespace.yaml`**
+   **Write `chaos/namespace.yaml`**
    ```yaml
    # chaos/namespace.yaml
    apiVersion: v1
@@ -469,7 +469,7 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
      name: chaos
    ```
 
-   **`chaos/latency.yaml`**
+   **Write `chaos/latency.yaml`**
    ```yaml
    # chaos/latency.yaml
    apiVersion: chaos-mesh.org/v1alpha1

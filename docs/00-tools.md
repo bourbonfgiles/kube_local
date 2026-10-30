@@ -136,7 +136,7 @@ flowchart LR
 
 Three failures at once, in `scratch/00/`:
 
-**`scratch/00/broken.yaml`**
+**Write `scratch/00/broken.yaml`**
 ```yaml
 # scratch/00/broken.yaml
 apiVersion: v1
@@ -210,7 +210,7 @@ Then fix `bad-tag` and watch the rollout:
 <details>
 <summary>Fix <code>bad-tag</code> to <code>6.7.1</code></summary>
 
-**`scratch/00/broken.yaml`**
+**Replace `scratch/00/broken.yaml`**
 ```yaml
 # scratch/00/broken.yaml
 apiVersion: v1

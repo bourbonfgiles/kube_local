@@ -79,7 +79,7 @@ differ on the shape:
 
 ### 2. A route to the proxy
 
-**`scratch/10/route.yaml`**
+**Write `scratch/10/route.yaml`**
 ```yaml
 # scratch/10/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -138,7 +138,7 @@ Jaeger's Service is `jaeger`, port `16686`, and it serves under
 `/jaeger/ui` because the chart sets that base path for the proxy. A second
 route in the same file:
 
-**`scratch/10/route.yaml`**
+**Replace `scratch/10/route.yaml`**
 ```yaml
 # scratch/10/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -188,7 +188,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger
 <details>
 <summary>2. More load</summary>
 
-**`scratch/10/load.yaml`**
+**Write `scratch/10/load.yaml`**
 ```yaml
 # scratch/10/load.yaml
 components:
@@ -239,9 +239,9 @@ Values you'd keep anywhere (components off, resources) go in base; hostnames
 and root URLs in local. Both start empty.
 
 <details>
-<summary>The demo as Flux files</summary>
+<summary>Files to write: the demo</summary>
 
-**`apps/base/otel-demo/namespace.yaml`**
+**Write `apps/base/otel-demo/namespace.yaml`**
 ```yaml
 # apps/base/otel-demo/namespace.yaml
 apiVersion: v1
@@ -250,7 +250,7 @@ metadata:
   name: otel-demo
 ```
 
-**`apps/base/otel-demo/source.yaml`**
+**Write `apps/base/otel-demo/source.yaml`**
 ```yaml
 # apps/base/otel-demo/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -263,7 +263,7 @@ spec:
   url: https://open-telemetry.github.io/opentelemetry-helm-charts
 ```
 
-**`apps/base/otel-demo/release.yaml`**
+**Write `apps/base/otel-demo/release.yaml`**
 ```yaml
 # apps/base/otel-demo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -287,7 +287,7 @@ spec:
       name: otel-demo-values-local
 ```
 
-**`apps/base/otel-demo/values.yaml`**
+**Write `apps/base/otel-demo/values.yaml`**
 ```yaml
 # apps/base/otel-demo/values.yaml
 apiVersion: v1
@@ -301,7 +301,7 @@ data:
   values.yaml: "{}"
 ```
 
-**`apps/local/otel-demo/values.yaml`**
+**Write `apps/local/otel-demo/values.yaml`**
 ```yaml
 # apps/local/otel-demo/values.yaml
 apiVersion: v1
@@ -315,7 +315,7 @@ data:
   values.yaml: "{}"
 ```
 
-**`apps/local/otel-demo/route.yaml`**
+**Write `apps/local/otel-demo/route.yaml`**
 ```yaml
 # apps/local/otel-demo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1

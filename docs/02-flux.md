@@ -85,7 +85,7 @@ sofka / k9s: `:pods -n flux-system`, then `:crds` and `/fluxcd`
 
 ### 2. A chart, the Flux way
 
-**`scratch/02/podinfo.yaml`**
+**Write `scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -143,7 +143,7 @@ and changed lines sit between `# ── new ──` and `# ── end new ──
 <details>
 <summary>1. Change the message: a new Helm revision</summary>
 
-**`scratch/02/podinfo.yaml`**
+**Replace `scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -196,7 +196,7 @@ Revision 2, made by helm-controller, not by you.
 <details>
 <summary>2. Three replicas</summary>
 
-**`scratch/02/podinfo.yaml`**
+**Replace `scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -264,7 +264,7 @@ It stays at 1: by default helm-controller only checks its own changes.
 <details>
 <summary>4. Drift detection: Flux puts it back</summary>
 
-**`scratch/02/podinfo.yaml`**
+**Replace `scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -326,7 +326,7 @@ The apply alone brings it back to 3. Scale it down again and watch Flux undo it 
 flux --context k3d-dev suspend helmrelease podinfo -n flux-system
 ```
 
-**`scratch/02/podinfo.yaml`**
+**Replace `scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -389,7 +389,7 @@ A new revision appears within a few seconds of resuming.
 <details>
 <summary>6. A tag that doesn't exist, then back</summary>
 
-**`scratch/02/podinfo.yaml`**
+**Replace `scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -441,7 +441,7 @@ flux --context k3d-dev get helmreleases -n flux-system
 
 The OCIRepository reports the missing tag; the HelmRelease keeps running the last good chart. Put `6.7.1` back:
 
-**`scratch/02/podinfo.yaml`**
+**Replace `scratch/02/podinfo.yaml`**
 ```yaml
 # scratch/02/podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -585,8 +585,15 @@ The Secret is the deploy key; the same key shows under the repo's
 
 ## How this repo is laid out
 
-Once Flux is in, everything you add goes in one of these places:
+> [!IMPORTANT]
+> Bootstrap only wrote `clusters/dev/flux-system/`. You write every other file
+> yourself, from this repo's root. The next three parts explain the layout;
+> [Write the files](#write-the-files) is where you create them.
 
+Once Flux is in, everything you add goes in one of these places. `<component>`
+stands for each chart you add in later lessons:
+
+**Example only: the pattern, nothing to create here**
 ```
 clusters/dev/
   flux-system/                 Written by bootstrap. Don't edit.
@@ -622,33 +629,15 @@ flowchart LR
   ab --> al["apps-local<br/>./apps/local"]
 ```
 
-**`clusters/dev/infrastructure.yaml`**
-```yaml
-# clusters/dev/infrastructure.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: infra-base
-  namespace: flux-system
-spec:
-  interval: 10m
-  retryInterval: 1m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./infrastructure/base
-  prune: true
-```
-
-The others are the same shape with their own `name`, `path` and `dependsOn`
-(`apps-base` waits on `infra-base`; `apps-local` on `apps-base`; `infra-local`
-on `infra-base`). Add each one when its folder has its first file: Flux can't
-apply a path that isn't in Git.
+`apps-base` waits on `infra-base`, `apps-local` on `apps-base`, and
+`infra-local` on `infra-base`. Add each one when its folder has its first
+file: Flux can't apply a path that isn't in Git.
 
 ### Chart values
 
 By hand, values are files and a later `-f` wins:
 
+**Example only: don't run it**
 ```sh
 helm upgrade --install podinfo ... -f values-base.yaml -f values-local.yaml
 ```
@@ -663,127 +652,155 @@ same order:
 | `-f values-local.yaml` | ConfigMap `podinfo-values-local` in `apps/local/podinfo/values.yaml` |
 | `--set image.tag=...` | `spec.values` on the HelmRelease. Overrides every ConfigMap. |
 
-<details>
-<summary>podinfo as Flux files</summary>
-
-**`apps/base/podinfo/namespace.yaml`**
-```yaml
-# apps/base/podinfo/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: podinfo
-```
-
-**`apps/base/podinfo/source.yaml`**
-```yaml
-# apps/base/podinfo/source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    tag: 6.7.1
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
-```
-
-**`apps/base/podinfo/release.yaml`**
-```yaml
-# apps/base/podinfo/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 10m
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  valuesFrom:
-    - kind: ConfigMap
-      name: podinfo-values-base
-    - kind: ConfigMap
-      name: podinfo-values-local
-```
-
-**`apps/base/podinfo/values.yaml`**
-```yaml
-# apps/base/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-base
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    replicaCount: 2
-```
-
-**`apps/local/podinfo/values.yaml`**
-```yaml
-# apps/local/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-local
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      message: k3d
-```
-
-**`apps/local/podinfo/route.yaml`**
-```yaml
-# apps/local/podinfo/route.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  parentRefs:
-    - name: web
-      namespace: gateway
-  hostnames: [podinfo.kube.internal]
-  rules:
-    - backendRefs:
-        - name: podinfo
-          port: 9898
-```
-
-</details>
-
 - The ConfigMaps must be in the HelmRelease's namespace.
 - The watch label makes Flux upgrade as soon as a ConfigMap changes, instead
   of at the next `interval`.
 - The route is local because its hostname is.
 
-### First objects from Git
+### Write the files
 
-1. `mkdir -p infrastructure/base/gateway` and move the Gateway in:
-   `cp scratch/01/gateway.yaml infrastructure/base/gateway/`.
-2. Write `clusters/dev/infrastructure.yaml` with `infra-base`.
+All in this repo's root, on top of what bootstrap pushed.
+
+1. Create the infrastructure folder and copy the Gateway from lesson 1:
+   ```sh
+   mkdir -p infrastructure/base/gateway
+   cp scratch/01/gateway.yaml infrastructure/base/gateway/
+   ```
+2. Create the first layer:
+
+   **Write `clusters/dev/infrastructure.yaml`**
+   ```yaml
+   # clusters/dev/infrastructure.yaml
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: infra-base
+     namespace: flux-system
+   spec:
+     interval: 10m
+     retryInterval: 1m
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./infrastructure/base
+     prune: true
+   ```
+
 3. Commit, push, and reconcile rather than waiting a minute:
    ```sh
+   git add clusters/dev/infrastructure.yaml infrastructure/
+   git commit -m "Add infra-base with the Gateway"
+   git push
    flux --context k3d-dev reconcile kustomization flux-system --with-source
    ```
 4. `kubectl --context k3d-dev get kustomizations,gateways -A`: the Gateway is
    back, from Git. sofka / k9s: `:kustomizations -A`, then `:gateways -A`.
-5. The podinfo files above, plus the apps layers:
+5. Create the podinfo folders:
+   ```sh
+   mkdir -p apps/base/podinfo apps/local/podinfo
+   ```
+6. Create podinfo's six files:
 
-   **`clusters/dev/apps.yaml`**
+   **Write `apps/base/podinfo/namespace.yaml`**
+   ```yaml
+   # apps/base/podinfo/namespace.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: podinfo
+   ```
+
+   **Write `apps/base/podinfo/source.yaml`**
+   ```yaml
+   # apps/base/podinfo/source.yaml
+   apiVersion: source.toolkit.fluxcd.io/v1
+   kind: OCIRepository
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     interval: 1h
+     url: oci://ghcr.io/stefanprodan/charts/podinfo
+     ref:
+       tag: 6.7.1
+     layerSelector:
+       mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+       operation: copy
+   ```
+
+   **Write `apps/base/podinfo/release.yaml`**
+   ```yaml
+   # apps/base/podinfo/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     interval: 10m
+     chartRef:
+       kind: OCIRepository
+       name: podinfo
+     valuesFrom:
+       - kind: ConfigMap
+         name: podinfo-values-base
+       - kind: ConfigMap
+         name: podinfo-values-local
+   ```
+
+   **Write `apps/base/podinfo/values.yaml`**
+   ```yaml
+   # apps/base/podinfo/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: podinfo-values-base
+     namespace: podinfo
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       replicaCount: 2
+   ```
+
+   **Write `apps/local/podinfo/values.yaml`**
+   ```yaml
+   # apps/local/podinfo/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: podinfo-values-local
+     namespace: podinfo
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       ui:
+         message: k3d
+   ```
+
+   **Write `apps/local/podinfo/route.yaml`**
+   ```yaml
+   # apps/local/podinfo/route.yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: HTTPRoute
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     parentRefs:
+       - name: web
+         namespace: gateway
+     hostnames: [podinfo.kube.internal]
+     rules:
+       - backendRefs:
+           - name: podinfo
+             port: 9898
+   ```
+
+7. Create the apps layers:
+
+   **Write `clusters/dev/apps.yaml`**
    ```yaml
    # clusters/dev/apps.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -819,8 +836,18 @@ spec:
      prune: true
    ```
 
-   Push, then
-   `curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message`.
+
+8. Commit, push, reconcile, then ask podinfo for its message:
+   ```sh
+   git add clusters/dev/apps.yaml apps/
+   git commit -m "Add podinfo"
+   git push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev wait kustomization/apps-local -n flux-system --for=condition=Ready --timeout=5m
+   curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
+   ```
+   The message is `k3d`, from the local ConfigMap. sofka / k9s:
+   `:helmreleases -A`.
 
 ## Exercises
 
@@ -856,9 +883,9 @@ release name and namespace takes that release over, so Flux owns the CNI.
 | `infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `overlays/local/cilium-values.yaml` |
 
 <details>
-<summary>Cilium as Flux files</summary>
+<summary>Files to write: Cilium</summary>
 
-**`clusters/dev/infrastructure.yaml`**
+**Replace `clusters/dev/infrastructure.yaml`**
 ```yaml
 # clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -894,7 +921,7 @@ spec:
 # ── end new ──
 ```
 
-**`infrastructure/base/cilium/source.yaml`**
+**Write `infrastructure/base/cilium/source.yaml`**
 ```yaml
 # infrastructure/base/cilium/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
@@ -907,7 +934,7 @@ spec:
   url: https://helm.cilium.io
 ```
 
-**`infrastructure/base/cilium/release.yaml`**
+**Write `infrastructure/base/cilium/release.yaml`**
 ```yaml
 # infrastructure/base/cilium/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -931,7 +958,7 @@ spec:
       name: cilium-values-local
 ```
 
-**`infrastructure/base/cilium/values.yaml`**
+**Write `infrastructure/base/cilium/values.yaml`**
 ```yaml
 # infrastructure/base/cilium/values.yaml
 apiVersion: v1
@@ -959,7 +986,7 @@ data:
       enabled: true
 ```
 
-**`infrastructure/local/cilium/values.yaml`**
+**Write `infrastructure/local/cilium/values.yaml`**
 ```yaml
 # infrastructure/local/cilium/values.yaml
 apiVersion: v1

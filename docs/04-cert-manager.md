@@ -82,7 +82,7 @@ and each needs the CA:
 
 ### 1. cert-manager
 
-**`scratch/04/values-base.yaml`**
+**Write `scratch/04/values-base.yaml`**
 ```yaml
 # scratch/04/values-base.yaml
 crds:
@@ -113,7 +113,7 @@ kubectl --context k3d-dev -n cert-manager create secret tls local-ca \
   --cert="$(mkcert -CAROOT)/rootCA.pem" --key="$(mkcert -CAROOT)/rootCA-key.pem"
 ```
 
-**`scratch/04/cluster-issuer.yaml`**
+**Write `scratch/04/cluster-issuer.yaml`**
 ```yaml
 # scratch/04/cluster-issuer.yaml
 apiVersion: cert-manager.io/v1
@@ -140,7 +140,7 @@ sofka / k9s: `:clusterissuers`
 
 ### 3. A certificate, by hand
 
-**`scratch/04/certificate.yaml`**
+**Write `scratch/04/certificate.yaml`**
 ```yaml
 # scratch/04/certificate.yaml
 apiVersion: cert-manager.io/v1
@@ -174,7 +174,7 @@ changed lines sit between `# ── new ──` and `# ── end new ──`.
 <details>
 <summary>1. A second name</summary>
 
-**`scratch/04/certificate.yaml`**
+**Replace `scratch/04/certificate.yaml`**
 ```yaml
 # scratch/04/certificate.yaml
 apiVersion: cert-manager.io/v1
@@ -207,7 +207,7 @@ The Secret is reissued, and `openssl` shows both names.
 <details>
 <summary>2. An issuer that doesn't exist</summary>
 
-**`scratch/04/certificate.yaml`**
+**Replace `scratch/04/certificate.yaml`**
 ```yaml
 # scratch/04/certificate.yaml
 apiVersion: cert-manager.io/v1
@@ -234,7 +234,7 @@ kubectl --context k3d-dev -n default describe certificate test
 
 It waits, and says why. Put the issuer back:
 
-**`scratch/04/certificate.yaml`**
+**Replace `scratch/04/certificate.yaml`**
 ```yaml
 # scratch/04/certificate.yaml
 apiVersion: cert-manager.io/v1
@@ -266,7 +266,7 @@ kubectl --context k3d-dev -n default get certificate test
 <details>
 <summary>3. Renew every minute</summary>
 
-**`scratch/04/certificate.yaml`**
+**Replace `scratch/04/certificate.yaml`**
 ```yaml
 # scratch/04/certificate.yaml
 apiVersion: cert-manager.io/v1
@@ -293,7 +293,7 @@ kubectl --context k3d-dev get certificaterequests -n default -w
 
 A new request every minute or so. Back to a day:
 
-**`scratch/04/certificate.yaml`**
+**Replace `scratch/04/certificate.yaml`**
 ```yaml
 # scratch/04/certificate.yaml
 apiVersion: cert-manager.io/v1
@@ -362,9 +362,9 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    and the HelmRelease reads only the base ConfigMap. The ConfigMap holds
    `scratch/04/values-base.yaml` unchanged.
    <details>
-   <summary>cert-manager as Flux files</summary>
+   <summary>Files to write: cert-manager</summary>
 
-   **`infrastructure/base/cert-manager/namespace.yaml`**
+   **Write `infrastructure/base/cert-manager/namespace.yaml`**
    ```yaml
    # infrastructure/base/cert-manager/namespace.yaml
    apiVersion: v1
@@ -373,7 +373,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
      name: cert-manager
    ```
 
-   **`infrastructure/base/cert-manager/source.yaml`**
+   **Write `infrastructure/base/cert-manager/source.yaml`**
    ```yaml
    # infrastructure/base/cert-manager/source.yaml
    apiVersion: source.toolkit.fluxcd.io/v1
@@ -391,7 +391,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
        operation: copy
    ```
 
-   **`infrastructure/base/cert-manager/release.yaml`**
+   **Write `infrastructure/base/cert-manager/release.yaml`**
    ```yaml
    # infrastructure/base/cert-manager/release.yaml
    apiVersion: helm.toolkit.fluxcd.io/v2
@@ -409,7 +409,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
          name: cert-manager-values-base
    ```
 
-   **`infrastructure/base/cert-manager/values.yaml`**
+   **Write `infrastructure/base/cert-manager/values.yaml`**
    ```yaml
    # infrastructure/base/cert-manager/values.yaml
    apiVersion: v1
@@ -444,7 +444,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    and block the ConfigMaps other charts are waiting for. So add a third
    layer:
 
-   **`clusters/dev/infrastructure.yaml`**
+   **Replace `clusters/dev/infrastructure.yaml`**
    ```yaml
    # clusters/dev/infrastructure.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -498,7 +498,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
 
    And the issuer, unchanged from `scratch/04/`:
 
-   **`infrastructure/local-config/cert-manager/cluster-issuer.yaml`**
+   **Write `infrastructure/local-config/cert-manager/cluster-issuer.yaml`**
    ```yaml
    # infrastructure/local-config/cert-manager/cluster-issuer.yaml
    apiVersion: cert-manager.io/v1
@@ -514,7 +514,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    issuer: `git mv infrastructure/base/gateway infrastructure/local/gateway`.
    On EKS its file would name your real domain and an ACME issuer. Then:
 
-   **`infrastructure/local/gateway/gateway.yaml`**
+   **Replace `infrastructure/local/gateway/gateway.yaml`**
    ```yaml
    # infrastructure/local/gateway/gateway.yaml
    apiVersion: v1
@@ -581,7 +581,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    <details>
    <summary>Answer</summary>
 
-   **`infrastructure/local/gateway/redirect.yaml`**
+   **Write `infrastructure/local/gateway/redirect.yaml`**
    ```yaml
    # infrastructure/local/gateway/redirect.yaml
    apiVersion: gateway.networking.k8s.io/v1
@@ -602,7 +602,7 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
                statusCode: 301
    ```
 
-   **`apps/local/podinfo/route.yaml`**
+   **Replace `apps/local/podinfo/route.yaml`**
    ```yaml
    # apps/local/podinfo/route.yaml
    apiVersion: gateway.networking.k8s.io/v1
