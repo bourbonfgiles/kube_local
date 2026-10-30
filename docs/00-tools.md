@@ -207,8 +207,7 @@ kubectl --context k3d-dev apply -f scratch/00/broken.yaml   # second terminal
 
 Then fix `bad-tag` and watch the rollout:
 
-<details>
-<summary>Fix <code>bad-tag</code> to <code>6.7.1</code></summary>
+#### Fix `bad-tag` to `6.7.1`
 
 **Replace `scratch/00/broken.yaml`**
 ```yaml
@@ -274,8 +273,6 @@ kubectl --context k3d-dev -n broken rollout history deploy/bad-tag
 
 Two revisions. sofka: `:rollout-history` on the Deployment, `⏎` on revision 1
 for the old image line. k9s: `z` on the Deployment for its ReplicaSets.
-
-</details>
 
 Clean up:
 

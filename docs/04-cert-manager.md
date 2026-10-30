@@ -171,8 +171,7 @@ sofka / k9s: `:secrets -n default`, `x` on `test-tls`
 Each step edits `scratch/04/certificate.yaml` and builds on the last. New or
 changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. A second name</summary>
+#### 1. A second name
 
 **Replace `scratch/04/certificate.yaml`**
 ```yaml
@@ -202,10 +201,7 @@ kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls
 
 The Secret is reissued, and `openssl` shows both names.
 
-</details>
-
-<details>
-<summary>2. An issuer that doesn't exist</summary>
+#### 2. An issuer that doesn't exist
 
 **Replace `scratch/04/certificate.yaml`**
 ```yaml
@@ -261,10 +257,7 @@ kubectl --context k3d-dev -n default get certificate test
 
 `READY True` again.
 
-</details>
-
-<details>
-<summary>3. Renew every minute</summary>
+#### 3. Renew every minute
 
 **Replace `scratch/04/certificate.yaml`**
 ```yaml
@@ -317,10 +310,7 @@ spec:
 kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
 ```
 
-</details>
-
-<details>
-<summary>4. Delete the Secret</summary>
+#### 4. Delete the Secret
 
 ```sh
 kubectl --context k3d-dev -n default delete secret test-tls
@@ -328,8 +318,6 @@ kubectl --context k3d-dev -n default get secret test-tls -w
 ```
 
 cert-manager notices and issues again.
-
-</details>
 
 sofka / k9s: `d` on the Certificate, `:certificaterequests -n default`.
 sofka extras ([lesson 0](00-tools.md)): `X` gives the Certificate's `Ready`
@@ -361,8 +349,6 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
 1. **The chart.** Nothing about it is k3d-specific, so it's all in `base/`
    and the HelmRelease reads only the base ConfigMap. The ConfigMap holds
    `scratch/04/values-base.yaml` unchanged.
-   <details>
-   <summary>Files to write: cert-manager</summary>
 
    **Write `infrastructure/base/cert-manager/namespace.yaml`**
    ```yaml
@@ -428,8 +414,6 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
          kind: ControllerConfiguration
          enableGatewayAPI: true
    ```
-
-   </details>
 
    Commit, push, and wait for `Ready`:
    ```sh
@@ -578,8 +562,8 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
    and `sectionName: http`, hostname `*.kube.internal`, and one rule with a
    `RequestRedirect` filter (`scheme: https`, `statusCode: 301`). Then give
    each app route `sectionName: https`, or it still matches plain HTTP too.
-   <details>
-   <summary>Answer</summary>
+
+   **Answer**
 
    **Write `infrastructure/local/gateway/redirect.yaml`**
    ```yaml
@@ -624,7 +608,6 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
              port: 9898
    ```
 
-   </details>
 3. Rebuild the cluster and bring HTTPS back without trusting anything again.
 4. Harder: give a route the hostname `a.b.kube.internal`. Work out why Zen
    rejects the certificate, then fix it with a second HTTPS listener for

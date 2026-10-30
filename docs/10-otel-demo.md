@@ -131,8 +131,7 @@ JSON lines through raw, record and pretty, and `ctrl-z` leaves only the errors.
 
 New or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. Jaeger on its own hostname</summary>
+#### 1. Jaeger on its own hostname
 
 Jaeger's Service is `jaeger`, port `16686`, and it serves under
 `/jaeger/ui` because the chart sets that base path for the proxy. A second
@@ -183,10 +182,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger
 `200` once ExternalDNS has the name. `/` on its own 404s: the base path stays
 `/jaeger/ui` unless you change it in values.
 
-</details>
-
-<details>
-<summary>2. More load</summary>
+#### 2. More load
 
 **Write `scratch/10/load.yaml`**
 ```yaml
@@ -214,8 +210,6 @@ helm --kube-context k3d-dev upgrade --install otel-demo opentelemetry-demo \
 kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
 ```
 
-</details>
-
 ### 4. Clean up
 
 ```sh
@@ -237,9 +231,6 @@ kubectl --context k3d-dev delete namespace otel-demo
 
 Values you'd keep anywhere (components off, resources) go in base; hostnames
 and root URLs in local. Both start empty.
-
-<details>
-<summary>Files to write: the demo</summary>
 
 **Write `apps/base/otel-demo/namespace.yaml`**
 ```yaml
@@ -333,8 +324,6 @@ spec:
         - name: frontend-proxy
           port: 8080
 ```
-
-</details>
 
 ## Exercises
 

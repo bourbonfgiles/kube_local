@@ -90,8 +90,7 @@ sofka / k9s: `:secrets -n default`, `x` on `demo`
 
 ### 3. Iterate
 
-<details>
-<summary>1. Edit it encrypted</summary>
+#### 1. Edit it encrypted
 
 ```sh
 sops scratch/05/demo.yaml
@@ -100,10 +99,7 @@ sops scratch/05/demo.yaml
 It opens decrypted in your editor and re-encrypts on save. `data` holds
 base64, as in any Secret.
 
-</details>
-
-<details>
-<summary>2. What a change looks like in Git</summary>
+#### 2. What a change looks like in Git
 
 Keep a copy, set a new password, and compare:
 
@@ -115,10 +111,7 @@ git diff --no-index scratch/05/demo.before.yaml scratch/05/demo.yaml
 
 Only that value's ciphertext and the `sops.mac` change.
 
-</details>
-
-<details>
-<summary>3. Encrypt everything</summary>
+#### 3. Encrypt everything
 
 A fresh copy without `--encrypted-regex`:
 
@@ -134,10 +127,7 @@ kubectl --context k3d-dev apply -f scratch/05/demo-all.yaml --dry-run=server
 Every value is encrypted, even `metadata.name`. Decrypted, it applies; as
 committed, Kubernetes rejects it.
 
-</details>
-
-<details>
-<summary>4. A machine without the key</summary>
+#### 4. A machine without the key
 
 ```sh
 mv ~/.config/sops/age/keys.txt ~/.config/sops/age/keys.txt.aside
@@ -148,8 +138,6 @@ sops --decrypt scratch/05/demo.yaml
 
 The first `--decrypt` fails as it would anywhere without the key; the second
 works again.
-
-</details>
 
 ### 4. Clean up
 

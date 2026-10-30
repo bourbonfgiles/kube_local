@@ -192,8 +192,7 @@ Then change `scratch/01/route.yaml` in three steps, each building on the last.
 Re-apply after each, and predict the answer before you `curl`. New lines sit
 between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. Path: <code>/green</code> to green, rewritten to <code>/</code></summary>
+#### 1. Path: `/green` to green, rewritten to `/`
 
 **Replace `scratch/01/route.yaml`**
 ```yaml
@@ -236,10 +235,7 @@ curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/green | jq .message
 
 Without the filter, podinfo gets `/green`, which it doesn't serve.
 
-</details>
-
-<details>
-<summary>2. Header: <code>x-colour: green</code> to green</summary>
+#### 2. Header: `x-colour: green` to green
 
 **Replace `scratch/01/route.yaml`**
 ```yaml
@@ -287,10 +283,7 @@ kubectl --context k3d-dev apply -f scratch/01/route.yaml
 curl -s -H 'Host: demo.kube.internal' -H 'x-colour: green' http://10.89.0.200/ | jq .message
 ```
 
-</details>
-
-<details>
-<summary>3. Weights: 90/10 split on the catch-all</summary>
+#### 3. Weights: 90/10 split on the catch-all
 
 **Replace `scratch/01/route.yaml`**
 ```yaml
@@ -343,8 +336,6 @@ for i in $(seq 50); do
   curl -s -H 'Host: demo.kube.internal' http://10.89.0.200/ | jq -r .message
 done | sort | uniq -c
 ```
-
-</details>
 
 Watch the requests in `hubble observe -f`. The source shows as `(ingress)`:
 that's Cilium's Envoy, not your machine.

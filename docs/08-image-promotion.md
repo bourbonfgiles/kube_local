@@ -113,8 +113,7 @@ Each step edits the policy in `scratch/08/image.yaml`, re-applies, and asks
 which tag it picked. New or changed lines sit between `# ── new ──` and
 `# ── end new ──`.
 
-<details>
-<summary>1. Pin one version</summary>
+#### 1. Pin one version
 
 **Replace `scratch/08/image.yaml`**
 ```yaml
@@ -151,10 +150,7 @@ flux --context k3d-dev get images policy podinfo-test -n flux-system
 
 Pinned: it picks `6.7.0` even though `6.7.1` exists.
 
-</details>
-
-<details>
-<summary>2. A prerelease, and the original range</summary>
+#### 2. A prerelease, and the original range
 
 Mirror a prerelease, re-tagged from an upstream image, and scan for it now:
 
@@ -200,10 +196,7 @@ flux --context k3d-dev get images policy podinfo-test -n flux-system
 
 Still `6.7.1`: semver ranges skip prereleases.
 
-</details>
-
-<details>
-<summary>3. Let prereleases in</summary>
+#### 3. Let prereleases in
 
 **Replace `scratch/08/image.yaml`**
 ```yaml
@@ -240,10 +233,7 @@ flux --context k3d-dev get images policy podinfo-test -n flux-system
 
 Now `6.8.0-rc.1` wins.
 
-</details>
-
-<details>
-<summary>4. Alphabetical instead of semver</summary>
+#### 4. Alphabetical instead of semver
 
 **Replace `scratch/08/image.yaml`**
 ```yaml
@@ -313,8 +303,6 @@ spec:
 kubectl --context k3d-dev apply -f scratch/08/image.yaml
 flux --context k3d-dev get images policy podinfo-test -n flux-system
 ```
-
-</details>
 
 ### Clean up
 

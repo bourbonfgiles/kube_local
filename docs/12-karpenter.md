@@ -235,8 +235,7 @@ sofka / k9s: `ctrl-z` on `:pods -n default`, `d` on a pod or node;
 Steps 2 to 4 edit `scratch/12/nodepool.yaml`, each building on the last. New
 or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. Scale down</summary>
+#### 1. Scale down
 
 ```sh
 kubectl --context k3d-dev -n default scale deployment inflate --replicas 2
@@ -245,10 +244,7 @@ kubectl --context k3d-dev get nodeclaims,nodes -w
 
 Consolidation removes nodes, after `consolidateAfter`.
 
-</details>
-
-<details>
-<summary>2. Only empty nodes go</summary>
+#### 2. Only empty nodes go
 
 **Replace `scratch/12/nodepool.yaml`**
 ```yaml
@@ -300,10 +296,7 @@ kubectl --context k3d-dev get nodeclaims,nodes -w
 
 Empty nodes go; half-empty ones stay.
 
-</details>
-
-<details>
-<summary>3. A CPU limit on the pool</summary>
+#### 3. A CPU limit on the pool
 
 **Replace `scratch/12/nodepool.yaml`**
 ```yaml
@@ -388,10 +381,7 @@ spec:
 kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
 ```
 
-</details>
-
-<details>
-<summary>4. One node at a time</summary>
+#### 4. One node at a time
 
 **Replace `scratch/12/nodepool.yaml`**
 ```yaml
@@ -480,8 +470,6 @@ spec:
 kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
 ```
 
-</details>
-
 ### 8. Clean up
 
 ```sh
@@ -508,9 +496,6 @@ instead.
 1. The chart comes from Git, not a chart repository, at the tag from step 1.
    Flux installs the chart's `crds/` itself. The values ConfigMap holds
    `karpenter-values.yaml` plus the image's tag and digest.
-   <details>
-   <summary>Files to write: Karpenter</summary>
-
    The tag and digest come from your build, so set them again (a new shell
    loses them) and write the source and values from them, in this repo's root:
 
@@ -596,7 +581,6 @@ instead.
          name: karpenter-values-local
    ```
 
-   </details>
 2. The NodePool needs Karpenter's CRDs, so it goes in `infra-local-config`
    (lesson 4), unchanged from `scratch/12/`:
 

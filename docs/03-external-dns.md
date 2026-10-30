@@ -141,8 +141,7 @@ The TXT record names `k3d-dev`.
 Then work through these in order. New or changed lines sit between
 `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. A second hostname on the route</summary>
+#### 1. A second hostname on the route
 
 Patch the route Flux applied in lesson 2. `apps-local` reverts it at its next
 interval, which is fine for now:
@@ -155,10 +154,7 @@ dig +short @10.89.0.250 hello.kube.internal
 
 A new record within a minute. Run the `dig` again until it answers.
 
-</details>
-
-<details>
-<summary>2. <code>policy: upsert-only</code>: records stay when routes go</summary>
+#### 2. `policy: upsert-only`: records stay when routes go
 
 **Replace `scratch/03/values-base.yaml`**
 ```yaml
@@ -202,10 +198,7 @@ dig +short @10.89.0.250 hello.kube.internal
 
 Within a minute, the record is gone.
 
-</details>
-
-<details>
-<summary>3. Without zone transfers</summary>
+#### 3. Without zone transfers
 
 The same file with the `--rfc2136-axfr` line removed:
 
@@ -270,8 +263,6 @@ helm --kube-context k3d-dev upgrade --install external-dns external-dns \
   --repo https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0 \
   -n external-dns -f scratch/03/values-base.yaml -f scratch/03/values-local.yaml
 ```
-
-</details>
 
 ### 5. Clean up
 

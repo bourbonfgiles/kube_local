@@ -140,8 +140,7 @@ sofka / k9s: `:ocirepositories -A`, `:helmreleases -A`, `:pods -n podinfo`
 Edit `scratch/02/podinfo.yaml` in six steps, each building on the last. New
 and changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. Change the message: a new Helm revision</summary>
+#### 1. Change the message: a new Helm revision
 
 **Replace `scratch/02/podinfo.yaml`**
 ```yaml
@@ -191,10 +190,7 @@ helm --kube-context k3d-dev history podinfo -n podinfo
 
 Revision 2, made by helm-controller, not by you.
 
-</details>
-
-<details>
-<summary>2. Three replicas</summary>
+#### 2. Three replicas
 
 **Replace `scratch/02/podinfo.yaml`**
 ```yaml
@@ -245,10 +241,7 @@ kubectl --context k3d-dev get pods -n podinfo
 
 Three pods.
 
-</details>
-
-<details>
-<summary>3. Scale by hand: Flux doesn't notice</summary>
+#### 3. Scale by hand: Flux doesn't notice
 
 No file change.
 
@@ -259,10 +252,7 @@ kubectl --context k3d-dev get pods -n podinfo
 
 It stays at 1: by default helm-controller only checks its own changes.
 
-</details>
-
-<details>
-<summary>4. Drift detection: Flux puts it back</summary>
+#### 4. Drift detection: Flux puts it back
 
 **Replace `scratch/02/podinfo.yaml`**
 ```yaml
@@ -317,10 +307,7 @@ kubectl --context k3d-dev get pods -n podinfo -w
 
 The apply alone brings it back to 3. Scale it down again and watch Flux undo it within the 5m interval. `ctrl-c` to stop watching.
 
-</details>
-
-<details>
-<summary>5. Suspend, change, resume</summary>
+#### 5. Suspend, change, resume
 
 ```sh
 flux --context k3d-dev suspend helmrelease podinfo -n flux-system
@@ -384,10 +371,7 @@ helm --kube-context k3d-dev history podinfo -n podinfo
 
 A new revision appears within a few seconds of resuming.
 
-</details>
-
-<details>
-<summary>6. A tag that doesn't exist, then back</summary>
+#### 6. A tag that doesn't exist, then back
 
 **Replace `scratch/02/podinfo.yaml`**
 ```yaml
@@ -489,8 +473,6 @@ kubectl --context k3d-dev -n flux-system get ocirepository podinfo
 ```
 
 `READY True` again.
-
-</details>
 
 sofka / k9s: `d` on the OCIRepository for its error. They differ on Helm and
 Flux actions:
@@ -836,7 +818,6 @@ All in this repo's root, on top of what bootstrap pushed.
      prune: true
    ```
 
-
 8. Commit, push, reconcile, then ask podinfo for its message:
    ```sh
    git add clusters/dev/apps.yaml apps/
@@ -881,9 +862,6 @@ release name and namespace takes that release over, so Flux owns the CNI.
 | `infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` both ConfigMaps, base first |
 | `infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `cilium/values.yaml` |
 | `infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `overlays/local/cilium-values.yaml` |
-
-<details>
-<summary>Files to write: Cilium</summary>
 
 **Replace `clusters/dev/infrastructure.yaml`**
 ```yaml
@@ -1028,8 +1006,6 @@ data:
 
 The ConfigMaps hold `cilium/values.yaml` and
 `overlays/local/cilium-values.yaml` unchanged.
-
-</details>
 
 1. Compare what's installed with what you're about to commit. The two
    ConfigMaps merged must give exactly this:

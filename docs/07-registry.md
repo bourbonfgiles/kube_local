@@ -117,8 +117,7 @@ Each step edits `scratch/07/pod.yaml` and re-creates the pod: a pod's spec
 can't be changed in place. New or changed lines sit between `# ── new ──` and
 `# ── end new ──`.
 
-<details>
-<summary>1. <code>localhost</code> from inside the cluster</summary>
+#### 1. `localhost` from inside the cluster
 
 **Replace `scratch/07/pod.yaml`**
 ```yaml
@@ -144,10 +143,7 @@ kubectl --context k3d-dev -n default describe pod mirror-test
 
 `ErrImagePull`: inside the cluster, `localhost` is the node itself.
 
-</details>
-
-<details>
-<summary>2. Pin by digest</summary>
+#### 2. Pin by digest
 
 The digest from step 2, the same upstream and in the mirror:
 
@@ -180,10 +176,7 @@ kubectl --context k3d-dev -n default get pod mirror-test \
 
 It works, and can never change under you.
 
-</details>
-
-<details>
-<summary>3. Move a tag under a running pod</summary>
+#### 3. Move a tag under a running pod
 
 Copy `6.7.1` over the `6.7.0` tag, and make the kubelet pull again rather than
 use the image it already has:
@@ -227,10 +220,7 @@ skopeo copy --all --dest-tls-verify=false \
   docker://localhost:5050/podinfo:6.7.0
 ```
 
-</details>
-
-<details>
-<summary>4. Copy one architecture only</summary>
+#### 4. Copy one architecture only
 
 ```sh
 skopeo copy --dest-tls-verify=false \
@@ -241,8 +231,6 @@ skopeo inspect --tls-verify=false --format '{{.Digest}}' docker://localhost:5050
 ```
 
 Different digests: without `--all`, only your architecture was copied.
-
-</details>
 
 ### 5. Clean up
 

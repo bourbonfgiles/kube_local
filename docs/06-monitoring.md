@@ -151,8 +151,7 @@ curl -s 'http://localhost:9090/api/v1/targets?state=active' \
 Each step changes one file and then puts it back. New or changed lines sit
 between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. A selector that matches nothing</summary>
+#### 1. A selector that matches nothing
 
 **Replace `scratch/06/podinfo-monitor.yaml`**
 ```yaml
@@ -207,10 +206,7 @@ spec:
 kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
 ```
 
-</details>
-
-<details>
-<summary>2. Only the chart's own ServiceMonitors</summary>
+#### 2. Only the chart's own ServiceMonitors
 
 **Replace `scratch/06/values-base.yaml`**
 ```yaml
@@ -255,10 +251,7 @@ helm --kube-context k3d-dev upgrade --install kube-prometheus-stack kube-prometh
   -n monitoring -f scratch/06/values-base.yaml -f scratch/06/values-local.yaml
 ```
 
-</details>
-
-<details>
-<summary>3. Scrape every 5 seconds</summary>
+#### 3. Scrape every 5 seconds
 
 **Replace `scratch/06/podinfo-monitor.yaml`**
 ```yaml
@@ -310,8 +303,6 @@ spec:
 kubectl --context k3d-dev apply -f scratch/06/podinfo-monitor.yaml
 ```
 
-</details>
-
 `kubectl --context k3d-dev get servicemonitors -A` lists what Prometheus can
 pick up.
 
@@ -341,8 +332,6 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
 
 1. One HelmRepository for both charts. The stack waits for the CRDs release,
    and its ConfigMaps hold the two scratch files unchanged.
-   <details>
-   <summary>Files to write: the stack</summary>
 
    **Write `infrastructure/base/monitoring/namespace.yaml`**
    ```yaml
@@ -453,7 +442,6 @@ helm --kube-context k3d-dev uninstall prometheus-operator-crds -n monitoring
          enabled: false
    ```
 
-   </details>
 2. Grafana's route:
 
    **Write `infrastructure/local/monitoring/route.yaml`**

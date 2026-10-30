@@ -159,8 +159,7 @@ Flagger starts a canary whenever the Deployment's pod template changes, so
 each release below changes the tag or a value. Keep the `curl` loop running.
 New or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. Bigger steps</summary>
+#### 1. Bigger steps
 
 **Replace `scratch/09/canary.yaml`**
 ```yaml
@@ -241,10 +240,7 @@ spec:
 kubectl --context k3d-dev apply -f scratch/09/canary.yaml
 ```
 
-</details>
-
-<details>
-<summary>2. A faulty release, with nothing watching</summary>
+#### 2. A faulty release, with nothing watching
 
 ```sh
 helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/podinfo \
@@ -264,10 +260,7 @@ kubectl --context k3d-dev get canaries -n canary-demo -w
 
 Wait for `Succeeded`.
 
-</details>
-
-<details>
-<summary>3. A metric check, and the faulty release again</summary>
+#### 3. A metric check, and the faulty release again
 
 A MetricTemplate using Hubble's HTTP metrics:
 
@@ -353,8 +346,6 @@ helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/po
 kubectl --context k3d-dev get canaries -n canary-demo -w
 ```
 
-</details>
-
 When it rolls back, ask why:
 
 ```sh
@@ -397,8 +388,6 @@ Now for the real podinfo, so lesson 8's commits become canaries.
 
 1. **Flagger.** Its values ConfigMap holds `scratch/09/flagger-values.yaml`
    unchanged.
-   <details>
-   <summary>Files to write: Flagger</summary>
 
    **Write `infrastructure/base/flagger/namespace.yaml`**
    ```yaml
@@ -462,12 +451,9 @@ Now for the real podinfo, so lesson 8's commits become canaries.
        metricsServer: http://kube-prometheus-stack-prometheus.monitoring:9090
    ```
 
-   </details>
 2. **podinfo's side.** The loadtester's `sourceRef` names the HelmRepository
    in Flagger's namespace. The MetricTemplate and Canary are the scratch ones
    moved to namespace `podinfo` and host `podinfo.kube.internal`.
-   <details>
-   <summary>Files to write: podinfo's canary</summary>
 
    **Write `apps/base/podinfo/loadtester.yaml`**
    ```yaml
@@ -563,8 +549,6 @@ Now for the real podinfo, so lesson 8's commits become canaries.
          enabled: false
        # ── end new ──
    ```
-
-   </details>
 
    And `git rm apps/local/podinfo/route.yaml`: Flagger owns the route now.
 3. **Check the query** in Prometheus before pushing: it names namespace

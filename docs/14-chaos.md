@@ -123,8 +123,7 @@ Steps 1 to 3 edit `scratch/14/pod-kill.yaml`, each building on the last, and
 re-create the experiment. New or changed lines sit between `# ── new ──` and
 `# ── end new ──`.
 
-<details>
-<summary>1. No label selector</summary>
+#### 1. No label selector
 
 The same file with `labelSelectors` removed:
 
@@ -151,10 +150,7 @@ kubectl --context k3d-dev get pods -n otel-demo -w
 
 A random demo pod dies each time. Which ones does the shop notice?
 
-</details>
-
-<details>
-<summary>2. Half the namespace</summary>
+#### 2. Half the namespace
 
 **Replace `scratch/14/pod-kill.yaml`**
 ```yaml
@@ -182,10 +178,7 @@ kubectl --context k3d-dev get pods -n otel-demo -w
 
 Half the namespace at once.
 
-</details>
-
-<details>
-<summary>3. Kill a container, not the pod</summary>
+#### 3. Kill a container, not the pod
 
 **Replace `scratch/14/pod-kill.yaml`**
 ```yaml
@@ -242,10 +235,7 @@ spec:
       app.kubernetes.io/component: cart
 ```
 
-</details>
-
-<details>
-<summary>4. 200ms latency on cart for two minutes</summary>
+#### 4. 200ms latency on cart for two minutes
 
 **Write `scratch/14/latency.yaml`**
 ```yaml
@@ -278,8 +268,6 @@ the record:
 ```sh
 kubectl --context k3d-dev delete -f scratch/14/latency.yaml
 ```
-
-</details>
 
 If a selector matches nothing, check the label:
 
@@ -320,8 +308,6 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
 
 1. **The chart.** The HelmRelease reads only the local ConfigMap, which holds
    `scratch/14/values-local.yaml` unchanged.
-   <details>
-   <summary>Files to write: Chaos Mesh</summary>
 
    **Write `infrastructure/base/chaos-mesh/namespace.yaml`**
    ```yaml
@@ -405,7 +391,6 @@ helm --kube-context k3d-dev uninstall chaos-mesh -n chaos-mesh
              port: 2333
    ```
 
-   </details>
 2. **The switch.** Experiments get their own folder and Kustomization, so one
    variable reaches all of them, and so they apply only after the CRDs exist:
 

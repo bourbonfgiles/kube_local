@@ -126,8 +126,7 @@ on memory:
 The first two steps edit `scratch/13/values-base.yaml` and put it back. New
 or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. A smaller heap</summary>
+#### 1. A smaller heap
 
 **Replace `scratch/13/values-base.yaml`**
 ```yaml
@@ -185,10 +184,7 @@ helm --kube-context k3d-dev upgrade --install minecraft minecraft \
   -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
 ```
 
-</details>
-
-<details>
-<summary>2. A limit below heap plus overhead</summary>
+#### 2. A limit below heap plus overhead
 
 **Replace `scratch/13/values-base.yaml`**
 ```yaml
@@ -247,10 +243,7 @@ helm --kube-context k3d-dev upgrade --install minecraft minecraft \
   -n minecraft --create-namespace -f scratch/13/values-base.yaml -f scratch/13/values-local.yaml
 ```
 
-</details>
-
-<details>
-<summary>3. Delete the pod</summary>
+#### 3. Delete the pod
 
 ```sh
 kubectl --context k3d-dev -n minecraft delete pods -l app=minecraft
@@ -261,10 +254,7 @@ kubectl --context k3d-dev -n minecraft logs deploy/minecraft -f
 The Deployment makes a new pod, and the world survives on the PVC: rejoin
 and it's as you left it.
 
-</details>
-
-<details>
-<summary>4. Uninstall, then reinstall</summary>
+#### 4. Uninstall, then reinstall
 
 ```sh
 helm --kube-context k3d-dev uninstall minecraft -n minecraft
@@ -277,8 +267,6 @@ kubectl --context k3d-dev get pvc -n minecraft
 
 Does the world survive? The PVC's age, and the PV's reclaim policy in
 `kubectl --context k3d-dev get pv`, tell you.
-
-</details>
 
 ### 5. Clean up
 
@@ -299,9 +287,6 @@ kubectl --context k3d-dev delete namespace minecraft   # deletes the world
 
 The ConfigMaps hold the two scratch files unchanged: the NodePort is local
 because the port mapping is k3d's.
-
-<details>
-<summary>Files to write: Minecraft</summary>
 
 **Write `apps/base/minecraft/namespace.yaml`**
 ```yaml
@@ -392,8 +377,6 @@ data:
       serviceType: NodePort
       nodePort: 30000
 ```
-
-</details>
 
 ## Profiling
 

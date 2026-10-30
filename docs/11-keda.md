@@ -144,8 +144,7 @@ sofka extras: `T` on `accounting` timestamps each replica change, and
 The rest edit `scratch/11/scaledobject.yaml`, each with the load up. New or
 changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. A lower lag threshold</summary>
+#### 1. A lower lag threshold
 
 **Replace `scratch/11/scaledobject.yaml`**
 ```yaml
@@ -208,10 +207,7 @@ spec:
 kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
 ```
 
-</details>
-
-<details>
-<summary>2. More consumers than partitions</summary>
+#### 2. More consumers than partitions
 
 Above the partition count from step 2:
 
@@ -279,10 +275,7 @@ spec:
 kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
 ```
 
-</details>
-
-<details>
-<summary>3. Scale to zero</summary>
+#### 3. Scale to zero
 
 **Replace `scratch/11/scaledobject.yaml`**
 ```yaml
@@ -346,8 +339,6 @@ spec:
 kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
 ```
 
-</details>
-
 ### 5. Clean up
 
 ```sh
@@ -367,9 +358,6 @@ Deleting the ScaledObject leaves `accounting` at whatever replica count it had.
 | ScaledObject | `otel-demo/accounting` | `apps/base/otel-demo/scaledobject.yaml` |
 
 No values ConfigMaps: defaults.
-
-<details>
-<summary>Files to write: KEDA</summary>
 
 **Write `infrastructure/base/keda/namespace.yaml`**
 ```yaml
@@ -411,8 +399,6 @@ spec:
         kind: HelmRepository
         name: kedacore
 ```
-
-</details>
 
 The ScaledObject, unchanged from `scratch/11/`:
 
