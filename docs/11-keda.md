@@ -46,47 +46,108 @@ workers, with the scaler authenticating through an IAM role
 **On your machine**: `kubectl`, `helm`, `flux`, and `sofka`
 or `k9s` ([lesson 0](00-tools.md)).
 
-## Install by hand
+## By hand, for comparison
+
+> [!NOTE]
+> Read this, don't run it. Flux does the same from Git below.
+
+**Example only: don't run it**
+```sh
+helm --kube-context k3d-dev upgrade --install keda keda --repo https://kedacore.github.io/charts \
+  --version 2.21.0 -n keda --create-namespace
+kubectl --context k3d-dev apply -f scaledobject.yaml
+```
+
+## Install with Flux
+
+| Kind | Name | File |
+| --- | --- | --- |
+| Namespace | `keda` | `~/repos/personal/kube_local/infrastructure/base/keda/namespace.yaml` |
+| HelmRepository | `kedacore` | `~/repos/personal/kube_local/infrastructure/base/keda/source.yaml` |
+| HelmRelease | `keda` | `~/repos/personal/kube_local/infrastructure/base/keda/release.yaml` |
+| ScaledObject | `otel-demo/accounting` | `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml` |
+
+No values ConfigMaps: KEDA's defaults are fine.
 
 ### 1. KEDA
 
 ```sh
-helm --kube-context k3d-dev upgrade --install keda keda --repo https://kedacore.github.io/charts \
-  --version 2.21.0 -n keda --create-namespace
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/keda
 ```
 
-KEDA's defaults are fine.
-
-```sh
-kubectl --context k3d-dev get pods -n keda
+**Write `~/repos/personal/kube_local/infrastructure/base/keda/namespace.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/keda/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
 ```
 
-The operator, the metrics apiserver and the admission webhooks.
+**Write `~/repos/personal/kube_local/infrastructure/base/keda/source.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/keda/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: kedacore
+  namespace: keda
+spec:
+  interval: 1h
+  url: https://kedacore.github.io/charts
+```
 
-sofka / k9s: `:pods -n keda`
+**Write `~/repos/personal/kube_local/infrastructure/base/keda/release.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/keda/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: keda
+  namespace: keda
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: keda
+      version: 2.21.0
+      sourceRef:
+        kind: HelmRepository
+        name: kedacore
+```
 
-### 2. Find the consumer
-
-Its replica count, then the topic's partitions. The Kafka tools live in
-`/opt/kafka/bin`, which isn't on the image's PATH:
+Push it first: `apps-base` can't apply a ScaledObject until KEDA's CRDs
+exist, and nothing else in `apps-base` applies meanwhile.
 
 ```sh
-kubectl --context k3d-dev get deploy accounting -n otel-demo
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local commit -m "KEDA with Flux"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get helmreleases -n keda -w
+```
+
+### 2. The consumer and its topic
+
+The Kafka tools live in `/opt/kafka/bin`, which isn't on the image's PATH:
+
+```sh
 kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
   /opt/kafka/bin/kafka-topics.sh --describe --topic orders --bootstrap-server localhost:9092
 kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
-  /opt/kafka/bin/kafka-consumer-groups.sh --list --bootstrap-server localhost:9092
+  /opt/kafka/bin/kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
 ```
 
-sofka / k9s: `:deploy -n otel-demo`, then `:pods -n otel-demo`, `s` on
-`kafka`.
+Note the partition count; step 2 below goes past it.
 
-Partitions are the ceiling: one consumer per partition at most.
+sofka / k9s: `:pods -n otel-demo`, `s` on `kafka`.
 
 ### 3. The ScaledObject
 
+**Write `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# scratch/11/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -108,46 +169,45 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "Scale accounting on Kafka lag"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev get scaledobjects,hpa -n otel-demo
 ```
 
-```sh
-kubectl --context k3d-dev get scaledobjects -n otel-demo -w
-kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
-```
-
-The ScaledObject goes `READY True`, then `keda-hpa-accounting` appears,
-created for you.
+KEDA created `keda-hpa-accounting` from it.
 
 sofka / k9s: `:scaledobjects -n otel-demo`, then `:hpa -n otel-demo`. sofka
 extra ([lesson 0](00-tools.md)): `X` on the ScaledObject if it isn't ready.
 
-### 4. Iterate
+## Iterate
 
-Scaling as it happens, and what the operator thinks of it:
+Keep these running, each in its own terminal:
 
 ```sh
-kubectl --context k3d-dev -n otel-demo get deploy accounting -w
-kubectl --context k3d-dev -n keda logs deploy/keda-operator -f
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w   # terminal 1
+kubectl --context k3d-dev -n keda logs deploy/keda-operator -f          # terminal 2
 ```
 
-sofka / k9s: `:deploy -n otel-demo`; `:pods -n keda`, `l` on `keda-operator`.
+sofka / k9s: `:hpa -n otel-demo`; `:pods -n keda`, `l` on `keda-operator`.
 sofka extras: `T` on `accounting` timestamps each replica change, and
 `ctrl-z` in the logs leaves only the errors.
 
 | Try | Then look at |
 | --- | --- |
-| Raise the users at `/loadgen/`, or turn on `kafkaQueueProblems` in `/feature/` | `kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w`: the current value climbs, and `accounting` scales out |
-| Drop the load the same way | Scale-in after `cooldownPeriod` and the HPA's own stabilisation |
+| Raise the users at `/loadgen/`, or turn on `kafkaQueueProblems` in `/feature/` | The HPA's current value climbs past the target, and `accounting` scales out |
+| Drop the load the same way | Scale-in after `cooldownPeriod` plus the HPA's own stabilisation |
 
-The rest edit `scratch/11/scaledobject.yaml`, each with the load up. New or
+Each step below changes the ScaledObject in Git, with the load up. New or
 changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. A lower lag threshold</summary>
+### 1. A lower lag threshold
 
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# scratch/11/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -171,14 +231,19 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: lag threshold 2"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
 It scales out much sooner. Put it back:
 
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# scratch/11/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -202,18 +267,19 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: lag threshold 10"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
-</details>
+### 2. More consumers than partitions
 
-<details>
-<summary>2. More consumers than partitions</summary>
-
-Above the partition count from step 2:
-
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# scratch/11/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -237,17 +303,21 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-kubectl --context k3d-dev -n otel-demo get deploy accounting -w
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: up to 6"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo exec deploy/kafka -- \
   /opt/kafka/bin/kafka-consumer-groups.sh --describe --group accounting --bootstrap-server localhost:9092
 ```
 
-The extra consumers sit idle, with no partition next to them, and lag doesn't
-fall faster. Put it back:
+Consumers past the partition count get no partition, and lag doesn't fall
+faster. Put it back:
 
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# scratch/11/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -271,16 +341,19 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: up to 3"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
-</details>
+### 3. Scale to zero
 
-<details>
-<summary>3. Scale to zero</summary>
-
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# scratch/11/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -304,15 +377,20 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: scale to zero"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
 kubectl --context k3d-dev -n otel-demo get deploy accounting -w
 ```
 
-It scales to zero when idle. Work out what happens to orders meanwhile. Put
-it back:
+Zero when idle; KEDA, not the HPA, takes it from 0 to 1. Work out what happens
+to orders meanwhile. Put it back:
 
+**Replace `~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml`**
 ```yaml
-# scratch/11/scaledobject.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -336,114 +414,12 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/11/scaledobject.yaml
-```
-
-</details>
-
-### 5. Clean up
-
-```sh
-kubectl --context k3d-dev delete -f scratch/11/scaledobject.yaml
-helm --kube-context k3d-dev uninstall keda -n keda
-```
-
-Deleting the ScaledObject leaves `accounting` at whatever replica count it had.
-
-## Install with Flux
-
-| Kind | Name | File |
-| --- | --- | --- |
-| Namespace | `keda` | `infrastructure/base/keda/namespace.yaml` |
-| HelmRepository | `kedacore` | `infrastructure/base/keda/source.yaml` |
-| HelmRelease | `keda` | `infrastructure/base/keda/release.yaml` |
-| ScaledObject | `otel-demo/accounting` | `apps/base/otel-demo/scaledobject.yaml` |
-
-No values ConfigMaps: defaults.
-
-<details>
-<summary>KEDA as Flux files</summary>
-
-```yaml
-# infrastructure/base/keda/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: keda
----
-# infrastructure/base/keda/source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: kedacore
-  namespace: keda
-spec:
-  interval: 1h
-  url: https://kedacore.github.io/charts
----
-# infrastructure/base/keda/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: keda
-  namespace: keda
-spec:
-  interval: 10m
-  chart:
-    spec:
-      chart: keda
-      version: 2.21.0
-      sourceRef:
-        kind: HelmRepository
-        name: kedacore
-```
-
-</details>
-
-The ScaledObject, unchanged from `scratch/11/`:
-
-```yaml
-# apps/base/otel-demo/scaledobject.yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: accounting
-  namespace: otel-demo
-spec:
-  scaleTargetRef:
-    name: accounting
-  minReplicaCount: 1
-  maxReplicaCount: 3
-  cooldownPeriod: 60
-  triggers:
-    - type: kafka
-      metadata:
-        bootstrapServers: kafka.otel-demo.svc:9092
-        consumerGroup: accounting
-        topic: orders
-        lagThreshold: "10"
-```
-
-Push KEDA first and wait for `Ready`: `apps-base` can't apply the
-ScaledObject until KEDA's CRDs exist, and nothing else in `apps-base` applies
-meanwhile.
-
-```sh
-git add infrastructure/
-git commit -m "KEDA with Flux"
-git push
-flux --context k3d-dev reconcile kustomization flux-system --with-source
-kubectl --context k3d-dev get helmreleases -n keda -w
-```
-
-Then the ScaledObject:
-
-```sh
-git add apps/
-git commit -m "Scale accounting on Kafka lag"
-git push
-flux --context k3d-dev reconcile kustomization flux-system --with-source
-kubectl --context k3d-dev get scaledobjects -n otel-demo -w
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/otel-demo/scaledobject.yaml
+git -C ~/repos/personal/kube_local commit -m "accounting: at least 1"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n otel-demo get hpa keda-hpa-accounting -w
 ```
 
 ## Exercises

@@ -1,8 +1,9 @@
 # Learning path
 
-Fourteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product,
-first by hand so you can see what it does, then through Flux so Git owns it.
-You write manifests and values, never application code.
+Fourteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product
+through Flux, and every change after that is a commit. The `helm` /
+`kubectl apply` equivalent is shown once, for comparison, never run. You write
+manifests and values, never application code.
 
 ## How a lesson is laid out
 
@@ -11,13 +12,14 @@ You write manifests and values, never application code.
 | **What it is** | The product: the problem it solves, how it works, the objects it adds. A diagram where it helps. |
 | **On EKS** | What you'd run there instead, and what changes. |
 | **Requirements** | What must already be in the cluster, and the tools you need on your machine. |
-| **Install by hand** | `helm` and `kubectl apply -f` against files in `scratch/`. Small YAML files you edit and re-apply to see what each field does. Each check is a kubectl command, then a `sofka / k9s:` line with the keys. Cleaned up at the end. |
-| **Install with Flux** | The same thing as files in the repo layout, committed and reconciled. |
+| **By hand, for comparison** | The `helm` / `kubectl apply` it replaces, marked **Example only**. Read, don't run. |
+| **Install with Flux** | A kind / name / file table, then the files, committed and reconciled. Each check is a kubectl command, then a `sofka / k9s:` line with the keys. |
+| **Iterate** | Changes to those files, one commit each, to see what each field does. Throwaway experiments are written, pushed, then `git rm`'d. |
 | **Exercises** | Easy first, hardest last. |
 | **Where it gets hard** | The failure modes, and how they show themselves. |
 
-Lessons 1 and 2 are the exception: lesson 1 has no Flux yet, and lesson 2 is
-Flux itself. Lesson 0 is a reference for the three tools you look with.
+Lesson 1 is the exception: Cilium is the CNI, so it and the first Gateway
+come before Flux, by hand. Lesson 2 is Flux itself. Lesson 0 is a reference for the three tools you look with.
 
 ## Lessons
 
@@ -32,7 +34,7 @@ Flux itself. Lesson 0 is a reference for the three tools you look with.
 | 6 | [Monitoring](06-monitoring.md) | Prometheus, Grafana, Cilium and Hubble metrics | 2, Cilium under Flux |
 | 7 | [Registry](07-registry.md) | Images mirrored into the local ECR stand-in | 2 |
 | 8 | [Image promotion](08-image-promotion.md) | Flux committing new tags to Git | 7 |
-| 9 | [Flagger](09-flagger.md) | Automated canaries through the Gateway | 6, 7 |
+| 9 | [Flagger](09-flagger.md) | Automated canaries through the Gateway; podinfo retired | 6, 8 |
 | 10 | [OpenTelemetry Demo](10-otel-demo.md) | A 20-service shop with traces and Kafka | 3 |
 | 11 | [KEDA](11-keda.md) | The shop's Kafka consumer scaled on lag | 10 |
 | 12 | [Karpenter](12-karpenter.md) | Karpenter provisioning simulated nodes | 2, 7 |
@@ -42,9 +44,19 @@ Flux itself. Lesson 0 is a reference for the three tools you look with.
 ## Where commands run
 
 > [!IMPORTANT]
-> Every command runs in a terminal on your machine, from the root of this repo
-> (`~/repos/personal/kube_local`), unless its block starts with a comment such
-> as `# in the pod shell`.
+> Every command runs in a terminal on your machine, unless its block starts
+> with a comment such as `# in the pod shell`. Every path is written in full,
+> so it doesn't matter where you are. Git commands use
+> `git -C ~/repos/personal/kube_local`.
+
+Everything lives side by side in `~/repos/personal`:
+
+| Folder | What |
+| --- | --- |
+| `~/repos/personal/dotfiles` | The machine and the CNI-less cluster |
+| `~/repos/personal/kube_local` | This repo: the platform, the lessons, and everything Flux applies |
+| `~/repos/personal/scratch` | Not a repo. Lessons 0 and 1 and the odd local check |
+| `~/repos/personal/karpenter`, `~/repos/personal/FlameGraph` | Clones for lessons 12 and 13 |
 
 Every command names the cluster, so a work context can never be hit by
 mistake:
@@ -60,8 +72,7 @@ mistake:
 `cilium --context k3d-dev hubble port-forward` opens. `dig`, `curl`, `skopeo`,
 `sops` and `mkcert` don't talk to the Kubernetes API at all.
 
-A pod shell is `kubectl exec -it`, or `s` on the pod in sofka or k9s. Lesson
-12 also works in a clone of the Karpenter repo; its blocks say so.
+A pod shell is `kubectl exec -it`, or `s` on the pod in sofka or k9s.
 
 ## Tools on your machine
 
@@ -86,27 +97,31 @@ lesson lists the ones it needs.
 Check with `command -v <tool>`. If one's missing, run the dotfiles step that
 provides it rather than installing it by hand.
 
-## The two ways in
+## How you work
 
-**By hand.** Files go in `scratch/<lesson>/`, which Git ignores. Charts go in
-with `helm upgrade --install ... -f values.yaml`; everything else with
-`kubectl --context k3d-dev apply -f <file>`. Edit, re-apply, watch what
-changes. Each lesson ends this part by removing what it installed, so the
-Flux part starts clean.
+**Through Git.** From lesson 2 on, nothing is applied by hand except
+Secrets until lesson 5 and builds or registry pushes. You write a file, commit,
+push, and `flux reconcile` rather than wait. `~/repos/personal/scratch` is only
+for lessons 0 and 1 and the odd local check.
 
-**Files.** Every YAML block starts with a comment naming its file. A change to
-a file you already have shows the whole file again, with the new or changed lines
-between `# ── new ──` and `# ── end new ──`. Both are plain comments, so the
-block still pastes as valid YAML.
+**Files.** Every file block is titled **Write `path`** (new) or **Replace
+`path`** (the whole file again, new or changed lines between `# ── new ──` and
+`# ── end new ──`). Both markers are plain comments, so the block still pastes
+as valid YAML. Anything else is labelled **Example only**.
+
+**What stays.** podinfo is the example app for lessons 2 to 9, retired at the
+end of lesson 9. Everything else you install is kept.
 
 **With Flux.** The same objects as files in the repo, in the layout lesson 2
 sets up:
 
+**Example only: the layout**
 ```
-clusters/dev/            Flux's entry point: one Kustomization per layer
-infrastructure/base/     Platform components, as you'd deploy them on EKS
-infrastructure/local/    The k3d-only parts: local values, *.kube.internal routes
-apps/base/, apps/local/  The same split for applications
+~/repos/personal/kube_local/
+  clusters/dev/            Flux's entry point: only Kustomizations, one per layer
+  infrastructure/base/     Platform components, as you'd deploy them on EKS
+  infrastructure/local/    The k3d-only parts: local values, *.kube.internal routes
+  apps/base/, apps/local/  The same split for applications
 ```
 
 A chart's values file becomes a ConfigMap that the HelmRelease reads.

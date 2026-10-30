@@ -78,42 +78,196 @@ and each needs the CA:
    profiles here; do each one you use.
 6. `rm ~/Downloads/kube-local-ca.pem`.
 
-## Install by hand
+## By hand, for comparison
 
-### 1. cert-manager
+> [!NOTE]
+> Read this, don't run it. Flux does the same from Git below.
 
-```yaml
-# scratch/04/values-base.yaml
-crds:
-  enabled: true
-config:
-  apiVersion: controller.config.cert-manager.io/v1alpha1
-  kind: ControllerConfiguration
-  enableGatewayAPI: true
-```
+By hand, cert-manager is one `helm` command, then a `ClusterIssuer` applied
+once the chart's CRDs exist:
 
+**Example only: don't run it**
 ```sh
 helm --kube-context k3d-dev upgrade --install cert-manager oci://quay.io/jetstack/charts/cert-manager \
-  --version v1.21.2 -n cert-manager --create-namespace -f scratch/04/values-base.yaml
+  --version v1.21.2 -n cert-manager --create-namespace -f values-base.yaml
+kubectl --context k3d-dev apply -f cluster-issuer.yaml
+```
+
+That ordering, chart before issuer, is what Flux needs a separate layer for.
+
+## Install with Flux
+
+| Kind | Name | File |
+| --- | --- | --- |
+| Namespace | `cert-manager` | `~/repos/personal/kube_local/infrastructure/base/cert-manager/namespace.yaml` |
+| OCIRepository | `cert-manager` | `~/repos/personal/kube_local/infrastructure/base/cert-manager/source.yaml` |
+| HelmRelease | `cert-manager` | `~/repos/personal/kube_local/infrastructure/base/cert-manager/release.yaml` |
+| ConfigMap | `cert-manager-values-base` | `~/repos/personal/kube_local/infrastructure/base/cert-manager/values.yaml` |
+| Secret | `local-ca` | By hand; lesson 5 puts it in Git encrypted |
+| Kustomization | `infra-local-config` | `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml` |
+| ClusterIssuer | `local-ca` | `~/repos/personal/kube_local/infrastructure/local-config/cert-manager/cluster-issuer.yaml` |
+| Gateway, moved and extended | `gateway/web` | `~/repos/personal/kube_local/infrastructure/local/gateway/gateway.yaml` |
+
+### 1. The chart
+
+Nothing about it is k3d-specific, so it's all in `base/` and the HelmRelease
+reads only the base ConfigMap.
+
+```sh
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/cert-manager
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/base/cert-manager/namespace.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cert-manager/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/base/cert-manager/source.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cert-manager/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 1h
+  url: oci://quay.io/jetstack/charts/cert-manager
+  ref:
+    tag: v1.21.2
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/base/cert-manager/release.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cert-manager/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  interval: 10m
+  chartRef:
+    kind: OCIRepository
+    name: cert-manager
+  valuesFrom:
+    - kind: ConfigMap
+      name: cert-manager-values-base
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/base/cert-manager/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cert-manager/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-manager-values-base
+  namespace: cert-manager
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    crds:
+      enabled: true
+    config:
+      apiVersion: controller.config.cert-manager.io/v1alpha1
+      kind: ControllerConfiguration
+      enableGatewayAPI: true
 ```
 
 ```sh
-kubectl --context k3d-dev get pods -n cert-manager
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local commit -m "cert-manager with Flux"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get helmreleases -n cert-manager -w
 ```
 
-The controller, the webhook and cainjector.
+### 2. The CA Secret
 
-sofka / k9s: `:pods -n cert-manager`
-
-### 2. The CA as an issuer
+The CA key can't go in Git in plain text, so this stays by hand until lesson 5
+encrypts it. The namespace now exists from Git:
 
 ```sh
 kubectl --context k3d-dev -n cert-manager create secret tls local-ca \
   --cert="$(mkcert -CAROOT)/rootCA.pem" --key="$(mkcert -CAROOT)/rootCA-key.pem"
 ```
 
+### 3. A layer for objects that need a chart's CRDs
+
+The `ClusterIssuer` kind only exists once the chart is installed. In
+`infra-local` it would fail, and block the ConfigMaps other charts are waiting
+for. So add a third layer:
+
+**Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
 ```yaml
-# scratch/04/cluster-issuer.yaml
+# ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/base
+  prune: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-local
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  dependsOn:
+    - name: infra-base
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/local
+  prune: true
+# ── new ──
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-local-config
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  dependsOn:
+    - name: infra-local
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/local-config
+  prune: true
+# ── end new ──
+```
+
+The issuer. A `ClusterIssuer` reads its Secret from cert-manager's own
+namespace:
+
+```sh
+mkdir -p ~/repos/personal/kube_local/infrastructure/local-config/cert-manager
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/local-config/cert-manager/cluster-issuer.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/cluster-issuer.yaml
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -123,23 +277,86 @@ spec:
     secretName: local-ca
 ```
 
-```sh
-kubectl --context k3d-dev apply -f scratch/04/cluster-issuer.yaml
-```
+### 4. The Gateway becomes local
+
+It's about to name a local hostname and issuer. On EKS its file would name
+your real domain and an ACME issuer.
 
 ```sh
-kubectl --context k3d-dev get clusterissuers
+git -C ~/repos/personal/kube_local mv ~/repos/personal/kube_local/infrastructure/base/gateway ~/repos/personal/kube_local/infrastructure/local/gateway
 ```
 
-`READY True`. A `ClusterIssuer` reads its Secret from cert-manager's own
-namespace.
-
-sofka / k9s: `:clusterissuers`
-
-### 3. A certificate, by hand
-
+**Replace `~/repos/personal/kube_local/infrastructure/local/gateway/gateway.yaml`**
 ```yaml
-# scratch/04/certificate.yaml
+# ~/repos/personal/kube_local/infrastructure/local/gateway/gateway.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+  namespace: gateway
+  # ── new ──
+  annotations:
+    cert-manager.io/cluster-issuer: local-ca
+  # ── end new ──
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+    # ── new ──
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.kube.internal"
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: wildcard-kube-internal
+    # ── end new ──
+```
+
+The Secret `wildcard-kube-internal` doesn't exist yet; cert-manager creates it
+from the listener.
+
+### 5. Push and check
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/ ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local commit -m "HTTPS on the Gateway"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get clusterissuers
+kubectl --context k3d-dev get certificates -n gateway -w
+```
+
+```sh
+curl -s https://podinfo.kube.internal/ | jq .message
+```
+
+Then open <https://podinfo.kube.internal/> in Zen. sofka / k9s:
+`:clusterissuers`, then `:certificates -n gateway`.
+
+## Iterate
+
+A throwaway Certificate, in Git like everything else, removed at the end. It
+needs cert-manager's CRDs, so it goes in `infra-local-config`. New or changed
+lines sit between `# ── new ──` and `# ── end new ──`.
+
+**Write `~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -156,23 +373,21 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
+git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization infra-local-config --with-source
 kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls\.crt}' \
   | base64 -d | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
 ```
 
 sofka / k9s: `:secrets -n default`, `x` on `test-tls`
 
-### 4. Iterate
+### 1. A second name
 
-Each step edits `scratch/04/certificate.yaml` and builds on the last. New or
-changed lines sit between `# ── new ──` and `# ── end new ──`.
-
-<details>
-<summary>1. A second name</summary>
-
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml`**
 ```yaml
-# scratch/04/certificate.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -191,20 +406,21 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
+git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, second name"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization infra-local-config --with-source
 kubectl --context k3d-dev -n default get secret test-tls -o jsonpath='{.data.tls\.crt}' \
   | base64 -d | openssl x509 -noout -subject -issuer -dates -ext subjectAltName
 ```
 
 The Secret is reissued, and `openssl` shows both names.
 
-</details>
+### 2. An issuer that doesn't exist
 
-<details>
-<summary>2. An issuer that doesn't exist</summary>
-
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml`**
 ```yaml
-# scratch/04/certificate.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -223,14 +439,18 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
+git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, missing issuer"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization infra-local-config --with-source
 kubectl --context k3d-dev -n default describe certificate test
 ```
 
-It waits, and says why. Put the issuer back:
+Flux applied it fine; cert-manager waits, and says why. Put the issuer back:
 
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml`**
 ```yaml
-# scratch/04/certificate.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -249,19 +469,18 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
+git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, issuer back"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization infra-local-config --with-source
 kubectl --context k3d-dev -n default get certificate test
 ```
 
-`READY True` again.
+### 3. Renew every minute
 
-</details>
-
-<details>
-<summary>3. Renew every minute</summary>
-
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml`**
 ```yaml
-# scratch/04/certificate.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -280,39 +499,18 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
+git -C ~/repos/personal/kube_local commit -m "cert-manager: test certificate, renew every minute"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization infra-local-config --with-source
 kubectl --context k3d-dev get certificaterequests -n default -w
 ```
 
-A new request every minute or so. Back to a day:
+A new request every minute or so.
 
-```yaml
-# scratch/04/certificate.yaml
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: test
-  namespace: default
-spec:
-  secretName: test-tls
-  dnsNames: [test.kube.internal, a.kube.internal]
-  # ── new ──
-  duration: 24h
-  renewBefore: 1h
-  # ── end new ──
-  issuerRef:
-    kind: ClusterIssuer
-    name: local-ca
-```
+### 4. Delete the Secret
 
-```sh
-kubectl --context k3d-dev apply -f scratch/04/certificate.yaml
-```
-
-</details>
-
-<details>
-<summary>4. Delete the Secret</summary>
+No file change: cert-manager, not Flux, owns the Secret.
 
 ```sh
 kubectl --context k3d-dev -n default delete secret test-tls
@@ -321,241 +519,39 @@ kubectl --context k3d-dev -n default get secret test-tls -w
 
 cert-manager notices and issues again.
 
-</details>
-
 sofka / k9s: `d` on the Certificate, `:certificaterequests -n default`.
 sofka extras ([lesson 0](00-tools.md)): `X` gives the Certificate's `Ready`
 reason, and `u` then `c` walks to the requests it owns.
 
-### 5. Clean up
+### 5. Remove it
 
 ```sh
-kubectl --context k3d-dev delete -f scratch/04/certificate.yaml -f scratch/04/cluster-issuer.yaml
+git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/infrastructure/local-config/cert-manager/test-certificate.yaml
+git -C ~/repos/personal/kube_local commit -m "cert-manager: drop the test certificate"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization infra-local-config --with-source
+kubectl --context k3d-dev -n default get certificates
 kubectl --context k3d-dev -n default delete secret test-tls
-helm --kube-context k3d-dev uninstall cert-manager -n cert-manager
 ```
 
-Keep the namespace and the `local-ca` Secret for the Flux part.
-
-## Install with Flux
-
-| Kind | Name | File |
-| --- | --- | --- |
-| Namespace | `cert-manager` | `infrastructure/base/cert-manager/namespace.yaml` |
-| OCIRepository | `cert-manager` | `infrastructure/base/cert-manager/source.yaml` |
-| HelmRelease | `cert-manager` | `infrastructure/base/cert-manager/release.yaml` |
-| ConfigMap | `cert-manager-values-base` | `infrastructure/base/cert-manager/values.yaml` |
-| Secret | `local-ca` | Still by hand; lesson 5 puts it in Git encrypted |
-| Kustomization | `infra-local-config` | `clusters/dev/infrastructure.yaml` |
-| ClusterIssuer | `local-ca` | `infrastructure/local-config/cert-manager/cluster-issuer.yaml` |
-| Gateway, moved and extended | `gateway/web` | `infrastructure/local/gateway/gateway.yaml` |
-
-1. **The chart.** Nothing about it is k3d-specific, so it's all in `base/`
-   and the HelmRelease reads only the base ConfigMap. The ConfigMap holds
-   `scratch/04/values-base.yaml` unchanged.
-   <details>
-   <summary>cert-manager as Flux files</summary>
-
-   ```yaml
-   # infrastructure/base/cert-manager/namespace.yaml
-   apiVersion: v1
-   kind: Namespace
-   metadata:
-     name: cert-manager
-   ---
-   # infrastructure/base/cert-manager/source.yaml
-   apiVersion: source.toolkit.fluxcd.io/v1
-   kind: OCIRepository
-   metadata:
-     name: cert-manager
-     namespace: cert-manager
-   spec:
-     interval: 1h
-     url: oci://quay.io/jetstack/charts/cert-manager
-     ref:
-       tag: v1.21.2
-     layerSelector:
-       mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-       operation: copy
-   ---
-   # infrastructure/base/cert-manager/release.yaml
-   apiVersion: helm.toolkit.fluxcd.io/v2
-   kind: HelmRelease
-   metadata:
-     name: cert-manager
-     namespace: cert-manager
-   spec:
-     interval: 10m
-     chartRef:
-       kind: OCIRepository
-       name: cert-manager
-     valuesFrom:
-       - kind: ConfigMap
-         name: cert-manager-values-base
-   ---
-   # infrastructure/base/cert-manager/values.yaml
-   apiVersion: v1
-   kind: ConfigMap
-   metadata:
-     name: cert-manager-values-base
-     namespace: cert-manager
-     labels:
-       reconcile.fluxcd.io/watch: Enabled
-   data:
-     values.yaml: |
-       crds:
-         enabled: true
-       config:
-         apiVersion: controller.config.cert-manager.io/v1alpha1
-         kind: ControllerConfiguration
-         enableGatewayAPI: true
-   ```
-
-   </details>
-
-   Commit, push, and wait for `Ready`:
-   ```sh
-   git add infrastructure/
-   git commit -m "cert-manager with Flux"
-   git push
-   flux --context k3d-dev reconcile kustomization flux-system --with-source
-   kubectl --context k3d-dev get helmreleases -n cert-manager -w
-   ```
-2. **A layer for objects that need a chart's CRDs.** The `ClusterIssuer` kind
-   only exists once the chart is installed. In `infra-local` it would fail,
-   and block the ConfigMaps other charts are waiting for. So add a third
-   layer:
-   ```yaml
-   # clusters/dev/infrastructure.yaml
-   apiVersion: kustomize.toolkit.fluxcd.io/v1
-   kind: Kustomization
-   metadata:
-     name: infra-base
-     namespace: flux-system
-   spec:
-     interval: 10m
-     retryInterval: 1m
-     sourceRef:
-       kind: GitRepository
-       name: flux-system
-     path: ./infrastructure/base
-     prune: true
-   ---
-   apiVersion: kustomize.toolkit.fluxcd.io/v1
-   kind: Kustomization
-   metadata:
-     name: infra-local
-     namespace: flux-system
-   spec:
-     interval: 10m
-     retryInterval: 1m
-     dependsOn:
-       - name: infra-base
-     sourceRef:
-       kind: GitRepository
-       name: flux-system
-     path: ./infrastructure/local
-     prune: true
-   # ── new ──
-   ---
-   apiVersion: kustomize.toolkit.fluxcd.io/v1
-   kind: Kustomization
-   metadata:
-     name: infra-local-config
-     namespace: flux-system
-   spec:
-     interval: 10m
-     retryInterval: 1m
-     dependsOn:
-       - name: infra-local
-     sourceRef:
-       kind: GitRepository
-       name: flux-system
-     path: ./infrastructure/local-config
-     prune: true
-   # ── end new ──
-   ```
-   And the issuer, unchanged from `scratch/04/`:
-   ```yaml
-   # infrastructure/local-config/cert-manager/cluster-issuer.yaml
-   apiVersion: cert-manager.io/v1
-   kind: ClusterIssuer
-   metadata:
-     name: local-ca
-   spec:
-     ca:
-       secretName: local-ca
-   ```
-3. **The Gateway becomes local.** It's about to name a local hostname and
-   issuer: `git mv infrastructure/base/gateway infrastructure/local/gateway`.
-   On EKS its file would name your real domain and an ACME issuer. Then:
-   ```yaml
-   # infrastructure/local/gateway/gateway.yaml
-   apiVersion: v1
-   kind: Namespace
-   metadata:
-     name: gateway
-   ---
-   apiVersion: gateway.networking.k8s.io/v1
-   kind: Gateway
-   metadata:
-     name: web
-     namespace: gateway
-     # ── new ──
-     annotations:
-       cert-manager.io/cluster-issuer: local-ca
-     # ── end new ──
-   spec:
-     gatewayClassName: cilium
-     listeners:
-       - name: http
-         protocol: HTTP
-         port: 80
-         allowedRoutes:
-           namespaces:
-             from: All
-       # ── new ──
-       - name: https
-         protocol: HTTPS
-         port: 443
-         hostname: "*.kube.internal"
-         allowedRoutes:
-           namespaces:
-             from: All
-         tls:
-           mode: Terminate
-           certificateRefs:
-             - name: wildcard-kube-internal
-       # ── end new ──
-   ```
-   The Secret `wildcard-kube-internal` doesn't exist yet; cert-manager creates
-   it from the listener.
-4. Commit, push, and wait for `READY True`:
-   ```sh
-   git add clusters/ infrastructure/
-   git commit -m "HTTPS on the Gateway"
-   git push
-   flux --context k3d-dev reconcile kustomization flux-system --with-source
-   kubectl --context k3d-dev get certificates -n gateway -w
-   curl -s https://podinfo.kube.internal/ | jq .message
-   ```
-   Then open <https://podinfo.kube.internal/> in Zen. sofka / k9s:
-   `:certificates -n gateway`.
+`prune` deletes the Certificate. cert-manager leaves the Secret it issued
+behind, so delete that last one by hand.
 
 ## Exercises
 
 1. Read the certificate Zen got (padlock > connection > more information) and
    match its issuer to `mkcert -CAROOT`.
 2. Redirect HTTP to HTTPS: an HTTPRoute in
-   `infrastructure/local/gateway/redirect.yaml` with `parentRefs` the Gateway
+   `~/repos/personal/kube_local/infrastructure/local/gateway/redirect.yaml` with `parentRefs` the Gateway
    and `sectionName: http`, hostname `*.kube.internal`, and one rule with a
    `RequestRedirect` filter (`scheme: https`, `statusCode: 301`). Then give
    each app route `sectionName: https`, or it still matches plain HTTP too.
-   <details>
-   <summary>Answer</summary>
 
+   **Answer**
+
+   **Write `~/repos/personal/kube_local/infrastructure/local/gateway/redirect.yaml`**
    ```yaml
-   # infrastructure/local/gateway/redirect.yaml
+   # ~/repos/personal/kube_local/infrastructure/local/gateway/redirect.yaml
    apiVersion: gateway.networking.k8s.io/v1
    kind: HTTPRoute
    metadata:
@@ -574,8 +570,9 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
                statusCode: 301
    ```
 
+   **Replace `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`**
    ```yaml
-   # apps/local/podinfo/route.yaml
+   # ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
    apiVersion: gateway.networking.k8s.io/v1
    kind: HTTPRoute
    metadata:
@@ -595,7 +592,6 @@ Keep the namespace and the `local-ca` Secret for the Flux part.
              port: 9898
    ```
 
-   </details>
 3. Rebuild the cluster and bring HTTPS back without trusting anything again.
 4. Harder: give a route the hostname `a.b.kube.internal`. Work out why Zen
    rejects the certificate, then fix it with a second HTTPS listener for

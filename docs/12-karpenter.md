@@ -44,65 +44,36 @@ learn here carry over unchanged.
 
 ## Requirements
 
-**In the cluster**: the local registry (lesson 7), and Flux for the Flux part.
+**In the cluster**: Flux, `infra-local-config` (lesson 4) and the local
+registry (lesson 7).
 
 **On your machine**: `git`, `go`, `ko`, `kwok`, `make`, `kubectl`, `helm`,
 `flux`, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
 
-## Install by hand
+## By hand, for comparison
 
-Steps 1 to 4 run in a clone of Karpenter, outside this repo. Its Makefile uses
-your *current* context, so set it first:
+> [!NOTE]
+> Read this, don't run it. Flux installs the chart from Karpenter's Git repo
+> below.
 
+By hand, the chart installs from the clone, with the CRDs first and the build's
+tag and digest on the command line:
+
+**Example only: don't run it**
 ```sh
-kubectl config use-context k3d-dev
-git clone https://github.com/kubernetes-sigs/karpenter ~/repos/karpenter
+kubectl --context k3d-dev apply -f ~/repos/personal/karpenter/kwok/charts/crds
+helm --kube-context k3d-dev upgrade --install karpenter ~/repos/personal/karpenter/kwok/charts -n kube-system \
+  --skip-crds -f ~/repos/personal/karpenter/karpenter-values.yaml \
+  --set controller.image.tag="$KARPENTER_VERSION" \
+  --set controller.image.digest="$DIGEST"
 ```
 
-### 1. A version that supports Kubernetes 1.36
+`karpenter-values.yaml` holds the Makefile's `HELM_OPTS` and `install-kwok`
+settings:
 
-```sh
-# in the karpenter clone
-git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head
-KARPENTER_VERSION=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-echo "$KARPENTER_VERSION"
-```
-
-Check the compatibility matrix in its docs supports 1.36 at that version. If
-it doesn't, set `KARPENTER_VERSION` to one from the list that does. Then:
-
-```sh
-# in the karpenter clone
-git checkout "$KARPENTER_VERSION"
-```
-
-### 2. The KWOK controller
-
-```sh
-# in the karpenter clone
-make install-kwok
-```
-
-### 3. Build and push the image
-
-```sh
-# in the karpenter clone
-KO_DOCKER_REPO=localhost:5050/karpenter ko build -B --tags "$KARPENTER_VERSION" \
-  --insecure-registry sigs.k8s.io/karpenter/kwok
-DIGEST=$(skopeo inspect --tls-verify=false \
-  docker://localhost:5050/karpenter/kwok:"$KARPENTER_VERSION" | jq -r .Digest)
-echo "$DIGEST"
-```
-
-The image is tagged with the Karpenter version, and `DIGEST` pins it.
-
-### 4. Install the chart
-
-These are the settings from the Makefile's `HELM_OPTS` and `install-kwok`
-target, as a values file:
-
+**Example only: it goes in a ConfigMap below**
 ```yaml
-# ~/repos/karpenter/karpenter-values.yaml
+# ~/repos/personal/karpenter/karpenter-values.yaml
 logLevel: debug
 settings:
   preferencePolicy: Ignore
@@ -118,22 +89,167 @@ controller:
     limits: {memory: 1Gi}
 ```
 
+## Install with Flux
+
+Everything is local: on EKS you'd use the AWS provider's published chart
+instead.
+
+| Kind | Name | File |
+| --- | --- | --- |
+| GitRepository | `kube-system/karpenter` | `~/repos/personal/kube_local/infrastructure/local/karpenter/source.yaml` |
+| HelmRelease | `kube-system/karpenter` | `~/repos/personal/kube_local/infrastructure/local/karpenter/release.yaml` |
+| ConfigMap | `kube-system/karpenter-values-local` | `~/repos/personal/kube_local/infrastructure/local/karpenter/values.yaml` |
+| KWOKNodeClass, NodePool | `default` | `~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml` |
+| Deployment | `default/inflate` | `~/repos/personal/kube_local/apps/local/inflate/inflate.yaml`: test load, removed at the end |
+| KWOK controller, image | | Commands: steps 2 and 3, again after a rebuild |
+
+Steps 1 to 3 work on a clone of Karpenter in `~/repos/personal/karpenter`. Its
+Makefile uses your *current* context, so set it first:
+
 ```sh
-# in the karpenter clone
-kubectl --context k3d-dev apply -f kwok/charts/crds
-helm --kube-context k3d-dev upgrade --install karpenter kwok/charts -n kube-system \
-  --skip-crds -f karpenter-values.yaml \
-  --set controller.image.tag="$KARPENTER_VERSION" \
-  --set controller.image.digest="$DIGEST"
+kubectl config use-context k3d-dev
+git clone https://github.com/kubernetes-sigs/karpenter ~/repos/personal/karpenter
+```
+
+### 1. A version that supports Kubernetes 1.36
+
+```sh
+git -C ~/repos/personal/karpenter tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head
+KARPENTER_VERSION=$(git -C ~/repos/personal/karpenter tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+echo "$KARPENTER_VERSION"
+```
+
+Check the compatibility matrix in its docs supports 1.36 at that version. If
+it doesn't, set `KARPENTER_VERSION` to one from the list that does. Then:
+
+```sh
+git -C ~/repos/personal/karpenter checkout "$KARPENTER_VERSION"
+```
+
+### 2. The KWOK controller
+
+```sh
+make -C ~/repos/personal/karpenter install-kwok
+```
+
+### 3. Build and push the image
+
+```sh
+cd ~/repos/personal/karpenter   # ko builds the Go module it's in
+KO_DOCKER_REPO=localhost:5050/karpenter ko build -B --tags "$KARPENTER_VERSION" \
+  --insecure-registry sigs.k8s.io/karpenter/kwok
+DIGEST=$(skopeo inspect --tls-verify=false \
+  docker://localhost:5050/karpenter/kwok:"$KARPENTER_VERSION" | jq -r .Digest)
+echo "$DIGEST"
+cd ~/repos/personal
+```
+
+The image is tagged with the Karpenter version, and `DIGEST` pins it.
+
+### 4. The chart, from Git
+
+The chart comes from Git, not a chart repository, at the tag from step 1.
+Flux installs the chart's `crds/` itself. The values ConfigMap holds the
+values above plus the image's tag and digest.
+
+The tag and digest come from your build, so set them again (a new shell
+loses them) and write the source and values from them:
+
+```sh
+KARPENTER_VERSION=$(git -C ~/repos/personal/karpenter describe --tags --exact-match)
+DIGEST=$(skopeo inspect --tls-verify=false \
+  docker://localhost:5050/karpenter/kwok:"$KARPENTER_VERSION" | jq -r .Digest)
+mkdir -p ~/repos/personal/kube_local/infrastructure/local/karpenter
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/local/karpenter/source.yaml`**
+```sh
+cat > ~/repos/personal/kube_local/infrastructure/local/karpenter/source.yaml <<EOF
+# ~/repos/personal/kube_local/infrastructure/local/karpenter/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: karpenter
+  namespace: kube-system
+spec:
+  interval: 1h
+  url: https://github.com/kubernetes-sigs/karpenter
+  ref:
+    tag: ${KARPENTER_VERSION}
+EOF
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/local/karpenter/values.yaml`**
+```sh
+cat > ~/repos/personal/kube_local/infrastructure/local/karpenter/values.yaml <<EOF
+# ~/repos/personal/kube_local/infrastructure/local/karpenter/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: karpenter-values-local
+  namespace: kube-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    logLevel: debug
+    settings:
+      preferencePolicy: Ignore
+      featureGates:
+        nodeRepair: true
+        capacityBuffer: true
+        staticCapacity: true
+    controller:
+      image:
+        repository: k3d-registry.localhost:5000/karpenter/kwok   # the name pods pull by
+        tag: ${KARPENTER_VERSION}
+        digest: ${DIGEST}
+      resources:
+        requests: {cpu: 500m, memory: 512Mi}
+        limits: {memory: 1Gi}
+EOF
+```
+
+```sh
+cat ~/repos/personal/kube_local/infrastructure/local/karpenter/source.yaml ~/repos/personal/kube_local/infrastructure/local/karpenter/values.yaml
+```
+
+The release has nothing build-specific:
+
+**Write `~/repos/personal/kube_local/infrastructure/local/karpenter/release.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/local/karpenter/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: karpenter
+  namespace: kube-system
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: ./kwok/charts
+      sourceRef:
+        kind: GitRepository
+        name: karpenter
+  valuesFrom:
+    - kind: ConfigMap
+      name: karpenter-values-local
 ```
 
 ### 5. A node class and a pool
 
-Back in this repo. The taint keeps everything that doesn't ask for fake nodes
-off them:
+The NodePool needs Karpenter's CRDs, so it goes in `infra-local-config`
+(lesson 4). The taint keeps everything that doesn't ask for fake nodes off
+them:
 
+```sh
+mkdir -p ~/repos/personal/kube_local/infrastructure/local-config/karpenter
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml`**
 ```yaml
-# scratch/12/nodepool.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
 kind: KWOKNodeClass
 metadata:
@@ -161,17 +277,37 @@ spec:
     cpu: 64
 ```
 
-### 6. Something to schedule
+### 6. Push and check
 
+```sh
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local commit -m "Karpenter with Flux"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get helmreleases -n kube-system karpenter -w
+kubectl --context k3d-dev get nodepools
+```
+
+## Iterate
+
+A test load in Git, removed at the end. Its replica count is what makes
+Karpenter act:
+
+```sh
+mkdir -p ~/repos/personal/kube_local/apps/local/inflate
+```
+
+**Write `~/repos/personal/kube_local/apps/local/inflate/inflate.yaml`**
 ```yaml
-# scratch/12/inflate.yaml
+# ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: inflate
   namespace: default
 spec:
-  replicas: 0
+  replicas: 20
   selector:
     matchLabels:
       app: inflate
@@ -195,21 +331,23 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml -f scratch/12/inflate.yaml
-kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter test load: 20"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-local-config
+flux --context k3d-dev reconcile kustomization apps-local
+kubectl --context k3d-dev get nodeclaims,nodes -w
 ```
 
 ```sh
-kubectl --context k3d-dev get nodeclaims,nodes -w
 kubectl --context k3d-dev describe nodeclaims
 ```
 
-Nodes appear, and each NodeClaim shows the instance type Karpenter chose and
-why.
+Each NodeClaim shows the instance type Karpenter chose and why.
 
 sofka / k9s: `:nodeclaims`, `:nodes`, `d` on a NodeClaim
-
-### 7. Iterate
 
 When pods stay `Pending`, find them, ask why, and see what each node has
 promised and what Karpenter thinks:
@@ -230,26 +368,62 @@ sofka / k9s: `ctrl-z` on `:pods -n default`, `d` on a pod or node;
 > cordon, taints and pod capacity. On a fake node it shows the `kwok` taint,
 > and during consolidation, the cordon Karpenter put on before draining it.
 
-Steps 2 to 4 edit `scratch/12/nodepool.yaml`, each building on the last. New
-or changed lines sit between `# ── new ──` and `# ── end new ──`.
+New or changed lines sit between `# ── new ──` and `# ── end new ──`.
 
-<details>
-<summary>1. Scale down</summary>
+### 1. Consolidation, default policy
+
+**Replace `~/repos/personal/kube_local/apps/local/inflate/inflate.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate
+  namespace: default
+spec:
+  # ── new ──
+  replicas: 2
+  # ── end new ──
+  selector:
+    matchLabels:
+      app: inflate
+  template:
+    metadata:
+      labels:
+        app: inflate
+    spec:
+      nodeSelector:
+        karpenter.sh/nodepool: default
+      tolerations:
+        - key: kwok
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+```
 
 ```sh
-kubectl --context k3d-dev -n default scale deployment inflate --replicas 2
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter test load: 2"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-local-config
+flux --context k3d-dev reconcile kustomization apps-local
 kubectl --context k3d-dev get nodeclaims,nodes -w
 ```
 
-Consolidation removes nodes, after `consolidateAfter`.
+`WhenEmptyOrUnderutilized`: nodes go, and pods may be moved to pack the rest.
 
-</details>
+### 2. Only empty nodes go
 
-<details>
-<summary>2. Only empty nodes go</summary>
-
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml`**
 ```yaml
-# scratch/12/nodepool.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
 kind: KWOKNodeClass
 metadata:
@@ -282,28 +456,105 @@ spec:
     cpu: 64
 ```
 
+**Replace `~/repos/personal/kube_local/apps/local/inflate/inflate.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate
+  namespace: default
+spec:
+  # ── new ──
+  replicas: 20
+  # ── end new ──
+  selector:
+    matchLabels:
+      app: inflate
+  template:
+    metadata:
+      labels:
+        app: inflate
+    spec:
+      nodeSelector:
+        karpenter.sh/nodepool: default
+      tolerations:
+        - key: kwok
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+```
+
 ```sh
-kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
-kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter: WhenEmpty, load 20"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-local-config
+flux --context k3d-dev reconcile kustomization apps-local
 kubectl --context k3d-dev get nodeclaims,nodes -w
 ```
 
-Once the nodes are up:
+Once the nodes are up, back to 2:
+
+**Replace `~/repos/personal/kube_local/apps/local/inflate/inflate.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate
+  namespace: default
+spec:
+  # ── new ──
+  replicas: 2
+  # ── end new ──
+  selector:
+    matchLabels:
+      app: inflate
+  template:
+    metadata:
+      labels:
+        app: inflate
+    spec:
+      nodeSelector:
+        karpenter.sh/nodepool: default
+      tolerations:
+        - key: kwok
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+```
 
 ```sh
-kubectl --context k3d-dev -n default scale deployment inflate --replicas 2
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter test load: 2"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-local-config
+flux --context k3d-dev reconcile kustomization apps-local
 kubectl --context k3d-dev get nodeclaims,nodes -w
 ```
 
 Empty nodes go; half-empty ones stay.
 
-</details>
+### 3. A CPU limit on the pool
 
-<details>
-<summary>3. A CPU limit on the pool</summary>
-
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml`**
 ```yaml
-# scratch/12/nodepool.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
 kind: KWOKNodeClass
 metadata:
@@ -336,17 +587,57 @@ spec:
     # ── end new ──
 ```
 
+**Replace `~/repos/personal/kube_local/apps/local/inflate/inflate.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate
+  namespace: default
+spec:
+  # ── new ──
+  replicas: 20
+  # ── end new ──
+  selector:
+    matchLabels:
+      app: inflate
+  template:
+    metadata:
+      labels:
+        app: inflate
+    spec:
+      nodeSelector:
+        karpenter.sh/nodepool: default
+      tolerations:
+        - key: kwok
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+```
+
 ```sh
-kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
-kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter: 8 CPU limit, load 20"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-local-config
+flux --context k3d-dev reconcile kustomization apps-local
 kubectl --context k3d-dev -n default get pods --field-selector=status.phase=Pending
 kubectl --context k3d-dev get events -A --field-selector involvedObject.kind=NodePool
 ```
 
 Some pods stay `Pending`, and the events say the limit was hit. Back to 64:
 
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml`**
 ```yaml
-# scratch/12/nodepool.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
 kind: KWOKNodeClass
 metadata:
@@ -380,16 +671,21 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter: 64 CPU limit"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-local-config
+flux --context k3d-dev reconcile kustomization apps-local
+kubectl --context k3d-dev get nodeclaims,nodes -w
 ```
 
-</details>
+### 4. One node at a time
 
-<details>
-<summary>4. One node at a time</summary>
-
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml`**
 ```yaml
-# scratch/12/nodepool.yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
 kind: KWOKNodeClass
 metadata:
@@ -424,24 +720,60 @@ spec:
     cpu: 64
 ```
 
-```sh
-kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
-kubectl --context k3d-dev -n default scale deployment inflate --replicas 20
-kubectl --context k3d-dev get nodeclaims,nodes -w
-```
-
-Once the nodes are up:
-
-```sh
-kubectl --context k3d-dev -n default scale deployment inflate --replicas 2
-kubectl --context k3d-dev get nodeclaims,nodes -w
-```
-
-Consolidation removes one node at a time. Put the NodePool back as it was in
-step 5:
-
+**Replace `~/repos/personal/kube_local/apps/local/inflate/inflate.yaml`**
 ```yaml
-# scratch/12/nodepool.yaml
+# ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inflate
+  namespace: default
+spec:
+  # ── new ──
+  replicas: 2
+  # ── end new ──
+  selector:
+    matchLabels:
+      app: inflate
+  template:
+    metadata:
+      labels:
+        app: inflate
+    spec:
+      nodeSelector:
+        karpenter.sh/nodepool: default
+      tolerations:
+        - key: kwok
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests:
+              cpu: "1"
+```
+
+```sh
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml ~/repos/personal/kube_local/apps/local/inflate/inflate.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter: one node at a time, load 2"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-local-config
+flux --context k3d-dev reconcile kustomization apps-local
+kubectl --context k3d-dev get nodeclaims,nodes -w
+```
+
+Consolidation removes one node at a time.
+
+### 5. Remove the test load
+
+The NodePool goes back to step 5's, and `inflate` leaves Git:
+
+**Replace `~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1
 kind: KWOKNodeClass
 metadata:
@@ -470,148 +802,17 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/12/nodepool.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local rm -r ~/repos/personal/kube_local/apps/local/inflate
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/local-config/karpenter/nodepool.yaml
+git -C ~/repos/personal/kube_local commit -m "Karpenter: drop the test load"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization apps-local
+kubectl --context k3d-dev get nodeclaims,nodes -w
 ```
 
-</details>
-
-### 8. Clean up
-
-```sh
-kubectl --context k3d-dev delete -f scratch/12/inflate.yaml
-kubectl --context k3d-dev delete -f scratch/12/nodepool.yaml   # wait for nodes to go
-helm --kube-context k3d-dev uninstall karpenter -n kube-system
-```
-
-Leave the KWOK controller and the image; Flux reuses them.
-
-## Install with Flux
-
-Everything is local: on EKS you'd use the AWS provider's published chart
-instead.
-
-| Kind | Name | File |
-| --- | --- | --- |
-| GitRepository | `kube-system/karpenter` | `infrastructure/local/karpenter/source.yaml` |
-| HelmRelease | `kube-system/karpenter` | `infrastructure/local/karpenter/release.yaml` |
-| ConfigMap | `kube-system/karpenter-values-local` | `infrastructure/local/karpenter/values.yaml` |
-| KWOKNodeClass, NodePool | `default` | `infrastructure/local-config/karpenter/nodepool.yaml` |
-| KWOK controller, image | | Stay by hand: steps 2 and 3 after a rebuild |
-
-1. The chart comes from Git, not a chart repository, at the tag from step 1.
-   Flux installs the chart's `crds/` itself. The values ConfigMap holds
-   `karpenter-values.yaml` plus the image's tag and digest.
-   <details>
-   <summary>Karpenter as Flux files</summary>
-
-   The tag and digest come from your build, so set them again (a new shell
-   loses them) and write the source and values from them, in this repo's root:
-
-   ```sh
-   KARPENTER_VERSION=$(git -C ~/repos/karpenter describe --tags --exact-match)
-   DIGEST=$(skopeo inspect --tls-verify=false \
-     docker://localhost:5050/karpenter/kwok:"$KARPENTER_VERSION" | jq -r .Digest)
-   mkdir -p infrastructure/local/karpenter
-
-   cat > infrastructure/local/karpenter/source.yaml <<EOF
-   # infrastructure/local/karpenter/source.yaml
-   apiVersion: source.toolkit.fluxcd.io/v1
-   kind: GitRepository
-   metadata:
-     name: karpenter
-     namespace: kube-system
-   spec:
-     interval: 1h
-     url: https://github.com/kubernetes-sigs/karpenter
-     ref:
-       tag: ${KARPENTER_VERSION}
-   EOF
-
-   cat > infrastructure/local/karpenter/values.yaml <<EOF
-   # infrastructure/local/karpenter/values.yaml
-   apiVersion: v1
-   kind: ConfigMap
-   metadata:
-     name: karpenter-values-local
-     namespace: kube-system
-     labels:
-       reconcile.fluxcd.io/watch: Enabled
-   data:
-     values.yaml: |
-       logLevel: debug
-       settings:
-         preferencePolicy: Ignore
-         featureGates:
-           nodeRepair: true
-           capacityBuffer: true
-           staticCapacity: true
-       controller:
-         image:
-           repository: k3d-registry.localhost:5000/karpenter/kwok   # the name pods pull by
-           tag: ${KARPENTER_VERSION}
-           digest: ${DIGEST}
-         resources:
-           requests: {cpu: 500m, memory: 512Mi}
-           limits: {memory: 1Gi}
-   EOF
-
-   cat infrastructure/local/karpenter/source.yaml infrastructure/local/karpenter/values.yaml
-   ```
-
-   The release has nothing build-specific:
-
-   ```yaml
-   # infrastructure/local/karpenter/release.yaml
-   apiVersion: helm.toolkit.fluxcd.io/v2
-   kind: HelmRelease
-   metadata:
-     name: karpenter
-     namespace: kube-system
-   spec:
-     interval: 10m
-     chart:
-       spec:
-         chart: ./kwok/charts
-         sourceRef:
-           kind: GitRepository
-           name: karpenter
-     valuesFrom:
-       - kind: ConfigMap
-         name: karpenter-values-local
-   ```
-
-   </details>
-2. The NodePool needs Karpenter's CRDs, so it goes in `infra-local-config`
-   (lesson 4), unchanged from `scratch/12/`:
-   ```yaml
-   # infrastructure/local-config/karpenter/nodepool.yaml
-   apiVersion: karpenter.kwok.sh/v1alpha1
-   kind: KWOKNodeClass
-   metadata:
-     name: default
-   ---
-   apiVersion: karpenter.sh/v1
-   kind: NodePool
-   metadata:
-     name: default
-   spec:
-     template:
-       spec:
-         nodeClassRef:
-           group: karpenter.kwok.sh
-           kind: KWOKNodeClass
-           name: default
-         taints:
-           - key: kwok
-             effect: NoSchedule
-         requirements:
-           - key: kubernetes.io/arch
-             operator: In
-             values: [amd64]
-     limits:
-       cpu: 64
-   ```
-3. `inflate` stays in `scratch/`: it's a test load, not something to keep.
+`prune` deletes `inflate`, and Karpenter removes the empty nodes.
 
 ## Exercises
 

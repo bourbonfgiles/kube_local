@@ -63,30 +63,24 @@ Check the cluster is ready for Flux:
 flux --context k3d-dev check --pre
 ```
 
-## Install by hand
+## By hand, for comparison
 
-First, Flux without Git: the controllers, and Flux objects you apply yourself.
-This shows what each object does before bootstrap wires them to a repo.
+> [!NOTE]
+> Read this, don't run it. It's what Flux looks like without Git, so you can
+> see what bootstrap adds.
 
-### 1. The controllers
+Flux's objects work without Git: install the controllers, then apply a source
+and a HelmRelease yourself.
 
+**Example only: don't run it**
 ```sh
 flux --context k3d-dev install
+kubectl --context k3d-dev apply -f podinfo.yaml
 ```
 
-```sh
-kubectl --context k3d-dev get pods -n flux-system
-kubectl --context k3d-dev get crds | grep fluxcd
-```
-
-Four controllers, and the kinds they brought.
-
-sofka / k9s: `:pods -n flux-system`, then `:crds` and `/fluxcd`
-
-### 2. A chart, the Flux way
-
+**Example only: don't write it**
 ```yaml
-# scratch/02/podinfo.yaml
+# podinfo.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: OCIRepository
 metadata:
@@ -120,401 +114,14 @@ spec:
       message: hello from helm-controller
 ```
 
-```sh
-kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
-```
-
-```sh
-kubectl --context k3d-dev get ocirepositories,helmreleases -A
-kubectl --context k3d-dev get pods -n podinfo
-```
-
-The OCIRepository fetches the chart, the HelmRelease installs it, and the pods
-run it.
-
-sofka / k9s: `:ocirepositories -A`, `:helmreleases -A`, `:pods -n podinfo`
-
-### 3. Iterate
-
-Edit `scratch/02/podinfo.yaml` in six steps, each building on the last. New
-and changed lines sit between `# ── new ──` and `# ── end new ──`.
-
-<details>
-<summary>1. Change the message: a new Helm revision</summary>
-
-```yaml
-# scratch/02/podinfo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    tag: 6.7.1
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 5m
-  releaseName: podinfo
-  targetNamespace: podinfo
-  install:
-    createNamespace: true
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  values:
-    ui:
-      # ── new ──
-      message: first change
-      # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
-```
-
-```sh
-helm --kube-context k3d-dev history podinfo -n podinfo
-```
-
-Revision 2, made by helm-controller, not by you.
-
-</details>
-
-<details>
-<summary>2. Three replicas</summary>
-
-```yaml
-# scratch/02/podinfo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    tag: 6.7.1
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 5m
-  releaseName: podinfo
-  targetNamespace: podinfo
-  install:
-    createNamespace: true
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  values:
-    # ── new ──
-    replicaCount: 3
-    # ── end new ──
-    ui:
-      message: first change
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
-```
-
-```sh
-kubectl --context k3d-dev get pods -n podinfo
-```
-
-Three pods.
-
-</details>
-
-<details>
-<summary>3. Scale by hand: Flux doesn't notice</summary>
-
-No file change.
-
-```sh
-kubectl --context k3d-dev -n podinfo scale deploy podinfo --replicas 1
-kubectl --context k3d-dev get pods -n podinfo
-```
-
-It stays at 1: by default helm-controller only checks its own changes.
-
-</details>
-
-<details>
-<summary>4. Drift detection: Flux puts it back</summary>
-
-```yaml
-# scratch/02/podinfo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    tag: 6.7.1
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 5m
-  releaseName: podinfo
-  targetNamespace: podinfo
-  install:
-    createNamespace: true
-  # ── new ──
-  driftDetection:
-    mode: enabled
-  # ── end new ──
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  values:
-    replicaCount: 3
-    ui:
-      message: first change
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
-```
-
-```sh
-kubectl --context k3d-dev get pods -n podinfo
-kubectl --context k3d-dev -n podinfo scale deploy podinfo --replicas 1
-kubectl --context k3d-dev get pods -n podinfo -w
-```
-
-The apply alone brings it back to 3. Scale it down again and watch Flux undo it within the 5m interval. `ctrl-c` to stop watching.
-
-</details>
-
-<details>
-<summary>5. Suspend, change, resume</summary>
-
-```sh
-flux --context k3d-dev suspend helmrelease podinfo -n flux-system
-```
-
-```yaml
-# scratch/02/podinfo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    tag: 6.7.1
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 5m
-  releaseName: podinfo
-  targetNamespace: podinfo
-  install:
-    createNamespace: true
-  driftDetection:
-    mode: enabled
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  values:
-    replicaCount: 3
-    ui:
-      # ── new ──
-      message: while suspended
-      # ── end new ──
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
-```
-
-```sh
-helm --kube-context k3d-dev history podinfo -n podinfo
-```
-
-No new revision: the HelmRelease changed, but helm-controller is paused. Resume it:
-
-```sh
-flux --context k3d-dev resume helmrelease podinfo -n flux-system
-helm --kube-context k3d-dev history podinfo -n podinfo
-```
-
-A new revision appears within a few seconds of resuming.
-
-</details>
-
-<details>
-<summary>6. A tag that doesn't exist, then back</summary>
-
-```yaml
-# scratch/02/podinfo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    # ── new ──
-    tag: 9.9.9
-    # ── end new ──
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 5m
-  releaseName: podinfo
-  targetNamespace: podinfo
-  install:
-    createNamespace: true
-  driftDetection:
-    mode: enabled
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  values:
-    replicaCount: 3
-    ui:
-      message: while suspended
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
-```
-
-```sh
-kubectl --context k3d-dev -n flux-system describe ocirepository podinfo
-flux --context k3d-dev get helmreleases -n flux-system
-```
-
-The OCIRepository reports the missing tag; the HelmRelease keeps running the last good chart. Put `6.7.1` back:
-
-```yaml
-# scratch/02/podinfo.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    # ── new ──
-    tag: 6.7.1
-    # ── end new ──
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: flux-system
-spec:
-  interval: 5m
-  releaseName: podinfo
-  targetNamespace: podinfo
-  install:
-    createNamespace: true
-  driftDetection:
-    mode: enabled
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  values:
-    replicaCount: 3
-    ui:
-      message: while suspended
-```
-
-```sh
-kubectl --context k3d-dev apply -f scratch/02/podinfo.yaml
-flux --context k3d-dev reconcile source oci podinfo -n flux-system
-kubectl --context k3d-dev -n flux-system get ocirepository podinfo
-```
-
-`READY True` again.
-
-</details>
-
-sofka / k9s: `d` on the OCIRepository for its error. They differ on Helm and
-Flux actions:
-
-- sofka: `⏎` on the HelmRelease for Helm's revisions; `t` to suspend or
-  reconcile.
-- k9s: `:helm`, `r` on `podinfo`; `Shift-t` to suspend, `Shift-r` to
-  reconcile (dotfiles plugins).
-
-> [!TIP]
-> A sofka extra ([lesson 0](00-tools.md)): with `ref.tag: 9.9.9`, `ctrl-z` on
-> `:ocirepositories -A` leaves only the broken source, and `X` gives its
-> `Ready` reason. `:gitops` on the podinfo Deployment walks up to the
-> HelmRelease and its source, with the applied and latest revisions side by
-> side.
-
-### 4. Clean up
-
-```sh
-kubectl --context k3d-dev delete -f scratch/02/podinfo.yaml   # helm-controller uninstalls podinfo
-kubectl --context k3d-dev delete namespace podinfo
-flux --context k3d-dev uninstall
-```
-
-Delete the HelmRelease before uninstalling Flux. Otherwise nothing is left to
-uninstall the chart.
+helm-controller installs and upgrades the chart, but every change is another
+`kubectl apply` from someone's laptop, and nothing records it. The rest of this
+lesson makes Git the only way in: you push, Flux applies.
 
 ## Install with Flux
 
-Bootstrap installs the controllers again, but this time commits them to this
-repo and points them at it, so Flux manages itself from Git.
+Bootstrap installs the controllers, commits them to this repo, and points them
+at it, so Flux manages itself from Git.
 
 ### A token for bootstrap
 
@@ -533,7 +140,7 @@ Fine-grained tokens → Generate new token**.
 | Resource owner | `bourbonfgiles` |
 | Repository access | Only select repositories: `kube_local` |
 | Administration | Read and write: creates the deploy key |
-| Contents | Read and write: pushes `clusters/dev/flux-system/` |
+| Contents | Read and write: pushes `~/repos/personal/kube_local/clusters/dev/flux-system/` |
 | Metadata | Read-only (GitHub adds it) |
 
 Copy the token. Read it into the shell without echoing it or leaving it in
@@ -550,7 +157,7 @@ You need a new one only if you bootstrap again, for example on a new cluster.
 ```sh
 flux bootstrap github --context k3d-dev \
   --owner bourbonfgiles --repository kube_local --personal --private=false \
-  --branch master --path clusters/dev \
+  --branch master --path ~/repos/personal/kube_local/clusters/dev \
   --components-extra image-reflector-controller,image-automation-controller \
   --read-write-key
 ```
@@ -561,16 +168,16 @@ flux bootstrap github --context k3d-dev \
 | `--components-extra ...` | The image controllers for lesson 8. Adding them later means bootstrapping again. |
 | `--read-write-key` | The deploy key can push, also for lesson 8. A read-only key isn't upgraded in place. |
 
-Then drop the token and fetch bootstrap's commit (in the repo root):
+Then drop the token and fetch bootstrap's commit:
 
 ```sh
 unset GITHUB_TOKEN
-git pull
+git -C ~/repos/personal/kube_local pull
 kubectl --context k3d-dev -n flux-system get secret flux-system
 ```
 
 The Secret is the deploy key; the same key shows under the repo's
-**Settings → Deploy keys**. Bootstrap committed `clusters/dev/flux-system/`:
+**Settings → Deploy keys**. Bootstrap committed `~/repos/personal/kube_local/clusters/dev/flux-system/`:
 
 - `gotk-components.yaml`: Flux itself.
 - `gotk-sync.yaml`: a `GitRepository` for this repo and a `Kustomization`
@@ -578,33 +185,41 @@ The Secret is the deploy key; the same key shows under the repo's
 
 ## How this repo is laid out
 
-Once Flux is in, everything you add goes in one of these places:
+> [!IMPORTANT]
+> Bootstrap only wrote `~/repos/personal/kube_local/clusters/dev/flux-system/`. You write every
+> other file yourself, at the full paths given. The next three parts explain the layout;
+> [Write the files](#write-the-files) is where you create them.
 
+Once Flux is in, everything you add goes in one of these places. `<component>`
+stands for each chart you add in later lessons:
+
+**Example only: the pattern, nothing to create here**
 ```
-clusters/dev/
-  flux-system/                 Written by bootstrap. Don't edit.
-  infrastructure.yaml          Kustomizations infra-base, infra-local (and later infra-local-config)
-  apps.yaml                    Kustomizations apps-base, apps-local
-infrastructure/
-  base/<component>/            As you'd deploy it on EKS
-    namespace.yaml
-    source.yaml                HelmRepository or OCIRepository
-    release.yaml               HelmRelease
-    values.yaml                ConfigMap <component>-values-base
-  local/<component>/           Only because this is k3d
-    values.yaml                ConfigMap <component>-values-local
-    route.yaml                 Anything naming *.kube.internal
-  local-config/<component>/    Local objects whose CRDs come from a chart (lesson 4)
-apps/
-  base/<app>/, local/<app>/    The same split for applications
+~/repos/personal/kube_local/
+  clusters/dev/
+    flux-system/                 Written by bootstrap. Don't edit.
+    infrastructure.yaml          Kustomizations infra-base, infra-local (and later infra-local-config)
+    apps.yaml                    Kustomizations apps-base, apps-local
+  infrastructure/
+    base/<component>/            As you'd deploy it on EKS
+      namespace.yaml
+      source.yaml                HelmRepository or OCIRepository
+      release.yaml               HelmRelease
+      values.yaml                ConfigMap <component>-values-base
+    local/<component>/           Only because this is k3d
+      values.yaml                ConfigMap <component>-values-local
+      route.yaml                 Anything naming *.kube.internal
+    local-config/<component>/    Local objects whose CRDs come from a chart (lesson 4)
+  apps/
+    base/<app>/, local/<app>/    The same split for applications
 ```
 
-An EKS cluster would get `clusters/eks/` pointing at the same `base/`
-folders plus an `infrastructure/eks/`. Nothing in `base/` changes.
+An EKS cluster would get `~/repos/personal/kube_local/clusters/eks/` pointing at the same `base/`
+folders plus an `~/repos/personal/kube_local/infrastructure/eks/`. Nothing in `base/` changes.
 
 ### Layers
 
-`flux-system` applies `clusters/dev/`, which holds one Kustomization per
+`flux-system` applies `~/repos/personal/kube_local/clusters/dev/`, which holds one Kustomization per
 layer. Each points at a folder and can wait for another with `dependsOn`:
 
 ```mermaid
@@ -615,32 +230,15 @@ flowchart LR
   ab --> al["apps-local<br/>./apps/local"]
 ```
 
-```yaml
-# clusters/dev/infrastructure.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: infra-base
-  namespace: flux-system
-spec:
-  interval: 10m
-  retryInterval: 1m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./infrastructure/base
-  prune: true
-```
-
-The others are the same shape with their own `name`, `path` and `dependsOn`
-(`apps-base` waits on `infra-base`; `apps-local` on `apps-base`; `infra-local`
-on `infra-base`). Add each one when its folder has its first file: Flux can't
-apply a path that isn't in Git.
+`apps-base` waits on `infra-base`, `apps-local` on `apps-base`, and
+`infra-local` on `infra-base`. Add each one when its folder has its first
+file: Flux can't apply a path that isn't in Git.
 
 ### Chart values
 
 By hand, values are files and a later `-f` wins:
 
+**Example only: don't run it**
 ```sh
 helm upgrade --install podinfo ... -f values-base.yaml -f values-local.yaml
 ```
@@ -651,115 +249,164 @@ same order:
 
 | By hand | With Flux |
 | --- | --- |
-| `-f values-base.yaml` | ConfigMap `podinfo-values-base` in `apps/base/podinfo/values.yaml` |
-| `-f values-local.yaml` | ConfigMap `podinfo-values-local` in `apps/local/podinfo/values.yaml` |
+| `-f values-base.yaml` | ConfigMap `podinfo-values-base` in `~/repos/personal/kube_local/apps/base/podinfo/values.yaml` |
+| `-f values-local.yaml` | ConfigMap `podinfo-values-local` in `~/repos/personal/kube_local/apps/local/podinfo/values.yaml` |
 | `--set image.tag=...` | `spec.values` on the HelmRelease. Overrides every ConfigMap. |
-
-<details>
-<summary>podinfo as Flux files</summary>
-
-```yaml
-# apps/base/podinfo/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: podinfo
----
-# apps/base/podinfo/source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: OCIRepository
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 1h
-  url: oci://ghcr.io/stefanprodan/charts/podinfo
-  ref:
-    tag: 6.7.1
-  layerSelector:
-    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
-    operation: copy
----
-# apps/base/podinfo/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 10m
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  valuesFrom:
-    - kind: ConfigMap
-      name: podinfo-values-base
-    - kind: ConfigMap
-      name: podinfo-values-local
----
-# apps/base/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-base
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    replicaCount: 2
----
-# apps/local/podinfo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: podinfo-values-local
-  namespace: podinfo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: |
-    ui:
-      message: k3d
----
-# apps/local/podinfo/route.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  parentRefs:
-    - name: web
-      namespace: gateway
-  hostnames: [podinfo.kube.internal]
-  rules:
-    - backendRefs:
-        - name: podinfo
-          port: 9898
-```
-
-</details>
 
 - The ConfigMaps must be in the HelmRelease's namespace.
 - The watch label makes Flux upgrade as soon as a ConfigMap changes, instead
   of at the next `interval`.
 - The route is local because its hostname is.
 
-### First objects from Git
+### Write the files
 
-1. `mkdir -p infrastructure/base/gateway` and move the Gateway in:
-   `cp scratch/01/gateway.yaml infrastructure/base/gateway/`.
-2. Write `clusters/dev/infrastructure.yaml` with `infra-base`.
+Everything below goes in `~/repos/personal/kube_local`, at the top level, next
+to `clusters/`. Nothing but the Kustomization files goes under `clusters/dev/`:
+`flux-system` applies that folder directly, so anything else there skips the
+layers.
+
+1. Create the infrastructure folder and copy the Gateway from lesson 1:
+   ```sh
+   mkdir -p ~/repos/personal/kube_local/infrastructure/base/gateway
+   cp ~/repos/personal/scratch/01/gateway.yaml ~/repos/personal/kube_local/infrastructure/base/gateway/
+   ```
+2. Create the first layer:
+
+   **Write `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
+   apiVersion: kustomize.toolkit.fluxcd.io/v1
+   kind: Kustomization
+   metadata:
+     name: infra-base
+     namespace: flux-system
+   spec:
+     interval: 10m
+     retryInterval: 1m
+     sourceRef:
+       kind: GitRepository
+       name: flux-system
+     path: ./infrastructure/base
+     prune: true
+   ```
+
 3. Commit, push, and reconcile rather than waiting a minute:
    ```sh
+   git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml ~/repos/personal/kube_local/infrastructure/
+   git -C ~/repos/personal/kube_local commit -m "Add infra-base with the Gateway"
+   git -C ~/repos/personal/kube_local push
    flux --context k3d-dev reconcile kustomization flux-system --with-source
    ```
 4. `kubectl --context k3d-dev get kustomizations,gateways -A`: the Gateway is
    back, from Git. sofka / k9s: `:kustomizations -A`, then `:gateways -A`.
-5. The podinfo files above, plus the apps layers:
+5. Create the podinfo folders:
+   ```sh
+   mkdir -p ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/local/podinfo
+   ```
+6. Create podinfo's six files:
+
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/namespace.yaml`**
    ```yaml
-   # clusters/dev/apps.yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/namespace.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: podinfo
+   ```
+
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+   apiVersion: source.toolkit.fluxcd.io/v1
+   kind: OCIRepository
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     interval: 1h
+     url: oci://ghcr.io/stefanprodan/charts/podinfo
+     ref:
+       tag: 6.7.1
+     layerSelector:
+       mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+       operation: copy
+   ```
+
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+   apiVersion: helm.toolkit.fluxcd.io/v2
+   kind: HelmRelease
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     interval: 10m
+     chartRef:
+       kind: OCIRepository
+       name: podinfo
+     valuesFrom:
+       - kind: ConfigMap
+         name: podinfo-values-base
+       - kind: ConfigMap
+         name: podinfo-values-local
+   ```
+
+   **Write `~/repos/personal/kube_local/apps/base/podinfo/values.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: podinfo-values-base
+     namespace: podinfo
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       replicaCount: 2
+   ```
+
+   **Write `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+   apiVersion: v1
+   kind: ConfigMap
+   metadata:
+     name: podinfo-values-local
+     namespace: podinfo
+     labels:
+       reconcile.fluxcd.io/watch: Enabled
+   data:
+     values.yaml: |
+       ui:
+         message: k3d
+   ```
+
+   **Write `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: HTTPRoute
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     parentRefs:
+       - name: web
+         namespace: gateway
+     hostnames: [podinfo.kube.internal]
+     rules:
+       - backendRefs:
+           - name: podinfo
+             port: 9898
+   ```
+
+7. Create the apps layers:
+
+   **Write `~/repos/personal/kube_local/clusters/dev/apps.yaml`**
+   ```yaml
+   # ~/repos/personal/kube_local/clusters/dev/apps.yaml
    apiVersion: kustomize.toolkit.fluxcd.io/v1
    kind: Kustomization
    metadata:
@@ -792,28 +439,281 @@ spec:
      path: ./apps/local
      prune: true
    ```
-   Push, then
-   `curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message`.
+
+8. Commit, push, reconcile, then ask podinfo for its message:
+   ```sh
+   git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/dev/apps.yaml ~/repos/personal/kube_local/apps/
+   git -C ~/repos/personal/kube_local commit -m "Add podinfo"
+   git -C ~/repos/personal/kube_local push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev wait kustomization/apps-local -n flux-system --for=condition=Ready --timeout=5m
+   curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
+   ```
+   The message is `k3d`, from the local ConfigMap. sofka / k9s:
+   `:helmreleases -A`.
+
+## Iterate
+
+Every change is a commit. Each step replaces one file, pushes it, and asks Flux
+to reconcile now rather than at the next interval. New and changed lines sit
+between `# ── new ──` and `# ── end new ──`.
+
+### 1. Change the message: a new Helm revision
+
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      # ── new ──
+      message: first change
+      # ── end new ──
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: first change"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+helm --kube-context k3d-dev history podinfo -n podinfo
+```
+
+A new revision straight away: the watch label makes the ConfigMap change
+trigger an upgrade instead of waiting for the interval.
+
+### 2. Delete the Service: Flux doesn't notice
+
+No file change. This is the drift Git can't see.
+
+```sh
+kubectl --context k3d-dev -n podinfo delete service podinfo
+kubectl --context k3d-dev -n podinfo get service podinfo
+```
+
+It stays gone, and `curl` through the Gateway fails: by default helm-controller
+only checks its own changes.
+
+### 3. Drift detection: Flux puts it back
+
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 10m
+  # ── new ──
+  driftDetection:
+    mode: enabled
+  # ── end new ──
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  valuesFrom:
+    - kind: ConfigMap
+      name: podinfo-values-base
+    - kind: ConfigMap
+      name: podinfo-values-local
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: drift detection"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n podinfo get service podinfo
+```
+
+The Service is back: helm-controller now compares the cluster with the release
+and corrects it. Delete it again, then reconcile the HelmRelease rather than
+wait the 10m interval:
+
+```sh
+kubectl --context k3d-dev -n podinfo delete service podinfo
+flux --context k3d-dev reconcile helmrelease podinfo -n podinfo
+kubectl --context k3d-dev -n podinfo get service podinfo
+```
+
+Drift detection stays on from here; later lessons expect it.
+
+### 4. Suspend, change, resume
+
+```sh
+flux --context k3d-dev suspend helmrelease podinfo -n podinfo
+```
+
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      # ── new ──
+      message: while suspended
+      # ── end new ──
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: while suspended"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+helm --kube-context k3d-dev history podinfo -n podinfo
+```
+
+No new revision: the ConfigMap changed, but helm-controller is paused. Resume
+it:
+
+```sh
+flux --context k3d-dev resume helmrelease podinfo -n podinfo
+helm --kube-context k3d-dev history podinfo -n podinfo
+```
+
+### 5. A tag that doesn't exist, then back
+
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    # ── new ──
+    tag: 9.9.9
+    # ── end new ──
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: chart 9.9.9"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n podinfo describe ocirepository podinfo
+flux --context k3d-dev get helmreleases -n podinfo
+```
+
+The OCIRepository reports the missing tag; the HelmRelease keeps running the
+last good chart. Put `6.7.1` back:
+
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/source.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 1h
+  url: oci://ghcr.io/stefanprodan/charts/podinfo
+  ref:
+    # ── new ──
+    tag: 6.7.1
+    # ── end new ──
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/source.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: chart 6.7.1"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+flux --context k3d-dev reconcile source oci podinfo -n podinfo
+kubectl --context k3d-dev -n podinfo get ocirepository podinfo
+```
+
+sofka / k9s: `d` on the OCIRepository for its error. They differ on Helm and
+Flux actions:
+
+- sofka: `⏎` on the HelmRelease for Helm's revisions; `t` to suspend or
+  reconcile.
+- k9s: `:helm`, `r` on `podinfo`; `Shift-t` to suspend, `Shift-r` to
+  reconcile (dotfiles plugins).
+
+> [!TIP]
+> A sofka extra ([lesson 0](00-tools.md)): with `ref.tag: 9.9.9`, `ctrl-z` on
+> `:ocirepositories -A` leaves only the broken source, and `X` gives its
+> `Ready` reason. `:gitops` on the podinfo Deployment walks up to the
+> HelmRelease and its source, with the applied and latest revisions side by
+> side.
+
+### 6. Back to the start
+
+Later lessons expect the message `k3d`.
+
+**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-local
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      # ── new ──
+      message: k3d
+      # ── end new ──
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: back to k3d"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+curl -s -H 'Host: podinfo.kube.internal' http://10.89.0.200/ | jq .message
+```
 
 ## Exercises
 
 1. Drift on a plain manifest: delete the route with `kubectl` and watch
    `apps-local` put it back within its interval.
-2. Drift on a chart: delete the podinfo Deployment. It doesn't come back until
-   you add `spec.driftDetection.mode: enabled` to the HelmRelease.
-3. Change `replicaCount` in `apps/base/podinfo/values.yaml` and push. Watch it upgrade:
-   `kubectl --context k3d-dev get helmreleases -A -w`.
-4. Ask Flux where a pod came from:
+2. Ask Flux where a pod came from:
    ```sh
    flux --context k3d-dev trace -n podinfo deployment podinfo
    ```
    The same from a TUI: sofka `:gitops` on the Deployment; k9s `Shift-q` on
    it (dotfiles plugin).
-5. Preview a change before pushing:
+3. Preview a change before pushing:
    ```sh
    flux --context k3d-dev diff kustomization apps-base --path ./apps/base
    ```
-6. Harder: adopt Cilium, below.
+4. Undo with `git -C ~/repos/personal/kube_local revert` instead of editing: set `message: oops` in
+   `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`, push, then `git -C ~/repos/personal/kube_local revert --no-edit HEAD` and
+   push again. Compare `git -C ~/repos/personal/kube_local log --oneline -3` with
+   `helm --kube-context k3d-dev history podinfo -n podinfo`.
+5. Harder: adopt Cilium, below.
 
 ## Adopting Cilium
 
@@ -822,17 +722,15 @@ release name and namespace takes that release over, so Flux owns the CNI.
 
 | File | Contents |
 | --- | --- |
-| `clusters/dev/infrastructure.yaml` | Add Kustomization `infra-local` |
-| `infrastructure/base/cilium/source.yaml` | HelmRepository `cilium` in `kube-system`, `url: https://helm.cilium.io` |
-| `infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` both ConfigMaps, base first |
-| `infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `cilium/values.yaml` |
-| `infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `overlays/local/cilium-values.yaml` |
+| `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml` | Add Kustomization `infra-local` |
+| `~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml` | HelmRepository `cilium` in `kube-system`, `url: https://helm.cilium.io` |
+| `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` both ConfigMaps, base first |
+| `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `~/repos/personal/kube_local/cilium/values.yaml` |
+| `~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml` | ConfigMap `cilium-values-local`: the contents of `~/repos/personal/kube_local/overlays/local/cilium-values.yaml` |
 
-<details>
-<summary>Cilium as Flux files</summary>
-
+**Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
 ```yaml
-# clusters/dev/infrastructure.yaml
+# ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -866,8 +764,9 @@ spec:
 # ── end new ──
 ```
 
+**Write `~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml`**
 ```yaml
-# infrastructure/base/cilium/source.yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
@@ -876,8 +775,11 @@ metadata:
 spec:
   interval: 1h
   url: https://helm.cilium.io
----
-# infrastructure/base/cilium/release.yaml
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
@@ -897,8 +799,11 @@ spec:
       name: cilium-values-base
     - kind: ConfigMap
       name: cilium-values-local
----
-# infrastructure/base/cilium/values.yaml
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -922,8 +827,11 @@ data:
 
     gatewayAPI:
       enabled: true
----
-# infrastructure/local/cilium/values.yaml
+```
+
+**Write `~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/local/cilium/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -961,10 +869,8 @@ data:
       mode: kubernetes
 ```
 
-The ConfigMaps hold `cilium/values.yaml` and
-`overlays/local/cilium-values.yaml` unchanged.
-
-</details>
+The ConfigMaps hold `~/repos/personal/kube_local/cilium/values.yaml` and
+`~/repos/personal/kube_local/overlays/local/cilium-values.yaml` unchanged.
 
 1. Compare what's installed with what you're about to commit. The two
    ConfigMaps merged must give exactly this:
@@ -981,11 +887,11 @@ The ConfigMaps hold `cilium/values.yaml` and
 
 > [!WARNING]
 > Wrong Cilium values take the cluster network down, and with it Flux's
-> ability to fix them. If it goes wrong, from the repo root:
+> ability to fix them. If it goes wrong:
 >
 > ```sh
 > flux --context k3d-dev suspend helmrelease cilium -n kube-system
-> ./overlays/local/bootstrap.sh
+> ~/repos/personal/kube_local/overlays/local/bootstrap.sh
 > ```
 >
 > Fix the values in Git and push, then hand Cilium back to Flux:
@@ -1005,7 +911,7 @@ The ConfigMaps hold `cilium/values.yaml` and
   the same Kustomization, they wait on each other forever. Lesson 4 gives such
   objects their own layer.
 - Flux commits to the repo (bootstrap now, image automation in lesson 8).
-  `git pull` before you commit.
+  `git -C ~/repos/personal/kube_local pull` before you commit.
 
 ## Coming from Argo CD
 
@@ -1013,7 +919,7 @@ The ConfigMaps hold `cilium/values.yaml` and
 | --- | --- |
 | `Application` (Git path) | `GitRepository` + `Kustomization` |
 | `Application` (Helm) | `HelmRepository` / `OCIRepository` + `HelmRelease` |
-| App of apps | A `Kustomization` whose path holds more `Kustomization`s, as `clusters/dev/` does |
+| App of apps | A `Kustomization` whose path holds more `Kustomization`s, as `~/repos/personal/kube_local/clusters/dev/` does |
 | Sync waves | `dependsOn` |
 | Self-heal | Default for manifests; `driftDetection` for HelmReleases |
 | Argo Rollouts | Flagger (lesson 9) |

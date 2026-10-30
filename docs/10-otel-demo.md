@@ -50,37 +50,119 @@ of free memory.
 **On your machine**: `kubectl`, `helm`, `flux`, `hubble`, `curl`, and `sofka` or `k9s`
 ([lesson 0](00-tools.md)).
 
-## Install by hand
+## By hand, for comparison
 
-### 1. Defaults first
+> [!NOTE]
+> Read this, don't run it. Flux does the same from Git below.
 
+By hand, the demo is one `helm` command with the chart's defaults, and a
+route applied next to it:
+
+**Example only: don't run it**
 ```sh
 helm --kube-context k3d-dev upgrade --install otel-demo opentelemetry-demo \
   --repo https://open-telemetry.github.io/opentelemetry-helm-charts --version 0.42.4 \
   -n otel-demo --create-namespace
+kubectl --context k3d-dev apply -f route.yaml
 ```
+
+## Install with Flux
+
+| Kind | Name | File |
+| --- | --- | --- |
+| Namespace | `otel-demo` | `~/repos/personal/kube_local/apps/base/otel-demo/namespace.yaml` |
+| HelmRepository | `open-telemetry` | `~/repos/personal/kube_local/apps/base/otel-demo/source.yaml` |
+| HelmRelease | `otel-demo` | `~/repos/personal/kube_local/apps/base/otel-demo/release.yaml` |
+| ConfigMap | `otel-demo-values-base` | `~/repos/personal/kube_local/apps/base/otel-demo/values.yaml` |
+| ConfigMap | `otel-demo-values-local` | `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml` |
+| HTTPRoute | `otel` | `~/repos/personal/kube_local/apps/local/otel-demo/route.yaml` |
+
+### 1. The demo
+
+Values you'd keep anywhere (components off, resources) go in base; hostnames,
+root URLs and load in local. Both start empty: the chart's defaults.
 
 ```sh
-kubectl --context k3d-dev get pods -n otel-demo -w
-kubectl --context k3d-dev get deploy,sts,jobs,svc -n otel-demo
+mkdir -p ~/repos/personal/kube_local/apps/base/otel-demo ~/repos/personal/kube_local/apps/local/otel-demo
 ```
 
-Wait until everything is running (a few minutes; Kafka is slowest). The
-second command is the shape: every workload, and the Services between them.
-A `Pending` pod says why in
-`kubectl --context k3d-dev get events -n otel-demo --field-selector reason=FailedScheduling`.
-
-sofka / k9s: `:pods -n otel-demo`, `ctrl-z` for stragglers, `d` on one. They
-differ on the shape:
-
-- sofka: `:workloads otel-demo` for every workload in one list; `:xray` from
-  `:deploy -n otel-demo`. `X` on a `Pending` pod ([lesson 0](00-tools.md)).
-- k9s: `:xray deploy otel-demo`.
-
-### 2. A route to the proxy
-
+**Write `~/repos/personal/kube_local/apps/base/otel-demo/namespace.yaml`**
 ```yaml
-# scratch/10/route.yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: otel-demo
+```
+
+**Write `~/repos/personal/kube_local/apps/base/otel-demo/source.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/source.yaml
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: open-telemetry
+  namespace: otel-demo
+spec:
+  interval: 1h
+  url: https://open-telemetry.github.io/opentelemetry-helm-charts
+```
+
+**Write `~/repos/personal/kube_local/apps/base/otel-demo/release.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: otel-demo
+  namespace: otel-demo
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: opentelemetry-demo
+      version: 0.42.4
+      sourceRef:
+        kind: HelmRepository
+        name: open-telemetry
+  valuesFrom:
+    - kind: ConfigMap
+      name: otel-demo-values-base
+    - kind: ConfigMap
+      name: otel-demo-values-local
+```
+
+**Write `~/repos/personal/kube_local/apps/base/otel-demo/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-demo-values-base
+  namespace: otel-demo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: "{}"
+```
+
+**Write `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-demo-values-local
+  namespace: otel-demo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: "{}"
+```
+
+**Write `~/repos/personal/kube_local/apps/local/otel-demo/route.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/otel-demo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -97,14 +179,40 @@ spec:
           port: 8080
 ```
 
+### 2. Push and watch it come up
+
 ```sh
-kubectl --context k3d-dev apply -f scratch/10/route.yaml
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
+git -C ~/repos/personal/kube_local commit -m "OpenTelemetry demo"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+kubectl --context k3d-dev get pods -n otel-demo -w
 ```
 
-ExternalDNS names it. Open `http(s)://otel.kube.internal/` for the shop, and
-`/jaeger/ui/`, `/grafana/`, `/loadgen/`, `/feature/` for the rest.
+A few minutes; Kafka is slowest.
 
-### 3. Iterate
+```sh
+kubectl --context k3d-dev get deploy,sts,jobs,svc -n otel-demo
+```
+
+The shape: every workload, and the Services between them. A `Pending` pod
+says why in
+`kubectl --context k3d-dev get events -n otel-demo --field-selector reason=FailedScheduling`.
+
+sofka / k9s: `:pods -n otel-demo`, `ctrl-z` for stragglers, `d` on one. They
+differ on the shape:
+
+- sofka: `:workloads otel-demo` for every workload in one list; `:xray` from
+  `:deploy -n otel-demo`. `X` on a `Pending` pod ([lesson 0](00-tools.md)).
+- k9s: `:xray deploy otel-demo`.
+
+ExternalDNS names the route. Open `https://otel.kube.internal/` for the shop,
+and `/jaeger/ui/`, `/grafana/`, `/loadgen/`, `/feature/` for the rest.
+
+## Iterate
+
+First, look around; nothing here changes Git:
 
 | Try | Then look at |
 | --- | --- |
@@ -128,17 +236,18 @@ kubectl --context k3d-dev -n otel-demo logs deploy/payment -f
 sofka / k9s: `l` on `payment`. sofka extra: in the logs view, `J` cycles the
 JSON lines through raw, record and pretty, and `ctrl-z` leaves only the errors.
 
-New or changed lines sit between `# ── new ──` and `# ── end new ──`.
+Then change it through Git. New or changed lines sit between `# ── new ──` and
+`# ── end new ──`.
 
-<details>
-<summary>1. Jaeger on its own hostname</summary>
+### 1. Jaeger on its own hostname
 
-Jaeger's Service is `jaeger`, port `16686`, and it serves under
-`/jaeger/ui` because the chart sets that base path for the proxy. A second
-route in the same file:
+Jaeger's Service is `jaeger`, port `16686`, and it serves under `/jaeger/ui`
+because the chart sets that base path for the proxy. A second route in the
+same file, kept from here on:
 
+**Replace `~/repos/personal/kube_local/apps/local/otel-demo/route.yaml`**
 ```yaml
-# scratch/10/route.yaml
+# ~/repos/personal/kube_local/apps/local/otel-demo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -173,121 +282,23 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/10/route.yaml
-kubectl --context k3d-dev get svc jaeger -n otel-demo
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/otel-demo/route.yaml
+git -C ~/repos/personal/kube_local commit -m "otel-demo: Jaeger route"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
 curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger/ui/
 ```
 
 `200` once ExternalDNS has the name. `/` on its own 404s: the base path stays
-`/jaeger/ui` unless you change it in values.
+`/jaeger/ui` unless you change it in values. It's plain HTTP: the wildcard
+certificate covers one level, not `*.otel.kube.internal` (lesson 4).
 
-</details>
+### 2. More load
 
-<details>
-<summary>2. More load</summary>
-
+**Replace `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml`**
 ```yaml
-# scratch/10/load.yaml
-components:
-  load-generator:
-    envOverrides:
-      - name: LOCUST_USERS
-        value: "50"
-```
-
-```sh
-helm --kube-context k3d-dev upgrade --install otel-demo opentelemetry-demo \
-  --repo https://open-telemetry.github.io/opentelemetry-helm-charts --version 0.42.4 \
-  -n otel-demo -f scratch/10/load.yaml
-kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
-```
-
-`LOCUST_USERS=50`, and more traffic everywhere. Back to the chart's 5:
-
-```sh
-helm --kube-context k3d-dev upgrade --install otel-demo opentelemetry-demo \
-  --repo https://open-telemetry.github.io/opentelemetry-helm-charts --version 0.42.4 \
-  -n otel-demo
-kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
-```
-
-</details>
-
-### 4. Clean up
-
-```sh
-kubectl --context k3d-dev delete -f scratch/10/route.yaml
-helm --kube-context k3d-dev uninstall otel-demo -n otel-demo
-kubectl --context k3d-dev delete namespace otel-demo
-```
-
-## Install with Flux
-
-| Kind | Name | File |
-| --- | --- | --- |
-| Namespace | `otel-demo` | `apps/base/otel-demo/namespace.yaml` |
-| HelmRepository | `open-telemetry` | `apps/base/otel-demo/source.yaml` |
-| HelmRelease | `otel-demo` | `apps/base/otel-demo/release.yaml` |
-| ConfigMap | `otel-demo-values-base` | `apps/base/otel-demo/values.yaml` |
-| ConfigMap | `otel-demo-values-local` | `apps/local/otel-demo/values.yaml` |
-| HTTPRoute | `otel` | `apps/local/otel-demo/route.yaml` |
-
-Values you'd keep anywhere (components off, resources) go in base; hostnames
-and root URLs in local. Both start empty.
-
-<details>
-<summary>The demo as Flux files</summary>
-
-```yaml
-# apps/base/otel-demo/namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: otel-demo
----
-# apps/base/otel-demo/source.yaml
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: open-telemetry
-  namespace: otel-demo
-spec:
-  interval: 1h
-  url: https://open-telemetry.github.io/opentelemetry-helm-charts
----
-# apps/base/otel-demo/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: otel-demo
-  namespace: otel-demo
-spec:
-  interval: 10m
-  chart:
-    spec:
-      chart: opentelemetry-demo
-      version: 0.42.4
-      sourceRef:
-        kind: HelmRepository
-        name: open-telemetry
-  valuesFrom:
-    - kind: ConfigMap
-      name: otel-demo-values-base
-    - kind: ConfigMap
-      name: otel-demo-values-local
----
-# apps/base/otel-demo/values.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: otel-demo-values-base
-  namespace: otel-demo
-  labels:
-    reconcile.fluxcd.io/watch: Enabled
-data:
-  values.yaml: "{}"
----
-# apps/local/otel-demo/values.yaml
+# ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -296,26 +307,51 @@ metadata:
   labels:
     reconcile.fluxcd.io/watch: Enabled
 data:
-  values.yaml: "{}"
----
-# apps/local/otel-demo/route.yaml
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: otel
-  namespace: otel-demo
-spec:
-  parentRefs:
-    - name: web
-      namespace: gateway
-  hostnames: [otel.kube.internal]
-  rules:
-    - backendRefs:
-        - name: frontend-proxy
-          port: 8080
+  values.yaml: |
+    # ── new ──
+    components:
+      load-generator:
+        envOverrides:
+          - name: LOCUST_USERS
+            value: "50"
+    # ── end new ──
 ```
 
-</details>
+```sh
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "otel-demo: 50 users"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
+```
+
+`LOCUST_USERS=50`, and more traffic everywhere. Back to the chart's 5:
+
+**Replace `~/repos/personal/kube_local/apps/local/otel-demo/values.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-demo-values-local
+  namespace: otel-demo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  # ── new ──
+  values.yaml: "{}"
+  # ── end new ──
+```
+
+```sh
+git -C ~/repos/personal/kube_local pull
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/otel-demo/values.yaml
+git -C ~/repos/personal/kube_local commit -m "otel-demo: default load"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-local --with-source
+kubectl --context k3d-dev -n otel-demo set env deploy/load-generator --list | grep LOCUST_USERS
+```
 
 ## Exercises
 

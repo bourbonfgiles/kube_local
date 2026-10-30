@@ -134,10 +134,11 @@ flowchart LR
 
 ### Try it
 
-Three failures at once, in `scratch/00/`:
+Three failures at once, in `~/repos/personal/scratch/00/`:
 
+**Write `~/repos/personal/scratch/00/broken.yaml`**
 ```yaml
-# scratch/00/broken.yaml
+# ~/repos/personal/scratch/00/broken.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -193,7 +194,7 @@ Start sofka on the namespace first, so its timeline sees everything:
 
 ```sh
 sofka --context k3d-dev -n broken deployments
-kubectl --context k3d-dev apply -f scratch/00/broken.yaml   # second terminal
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/00/broken.yaml   # second terminal
 ```
 
 | Try | kubectl | sofka | k9s |
@@ -206,11 +207,11 @@ kubectl --context k3d-dev apply -f scratch/00/broken.yaml   # second terminal
 
 Then fix `bad-tag` and watch the rollout:
 
-<details>
-<summary>Fix <code>bad-tag</code> to <code>6.7.1</code></summary>
+#### Fix `bad-tag` to `6.7.1`
 
+**Replace `~/repos/personal/scratch/00/broken.yaml`**
 ```yaml
-# scratch/00/broken.yaml
+# ~/repos/personal/scratch/00/broken.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -265,7 +266,7 @@ spec:
 ```
 
 ```sh
-kubectl --context k3d-dev apply -f scratch/00/broken.yaml
+kubectl --context k3d-dev apply -f ~/repos/personal/scratch/00/broken.yaml
 kubectl --context k3d-dev -n broken rollout status deploy/bad-tag
 kubectl --context k3d-dev -n broken rollout history deploy/bad-tag
 ```
@@ -273,12 +274,10 @@ kubectl --context k3d-dev -n broken rollout history deploy/bad-tag
 Two revisions. sofka: `:rollout-history` on the Deployment, `⏎` on revision 1
 for the old image line. k9s: `z` on the Deployment for its ReplicaSets.
 
-</details>
-
 Clean up:
 
 ```sh
-kubectl --context k3d-dev delete -f scratch/00/broken.yaml
+kubectl --context k3d-dev delete -f ~/repos/personal/scratch/00/broken.yaml
 ```
 
 ## Where it gets hard
