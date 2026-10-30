@@ -219,7 +219,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [grafana.${CLUSTER_DOMAIN}]
+  hostnames: ["grafana.${CLUSTER_DOMAIN}"]
   rules:
     - backendRefs:
         - name: kube-prometheus-stack-grafana

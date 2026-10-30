@@ -298,7 +298,7 @@ spec:
     - name: web
       namespace: gateway
   # ── new ──
-  hostnames: [podinfo.${CLUSTER_DOMAIN}, hello.${CLUSTER_DOMAIN}]
+  hostnames: ["podinfo.${CLUSTER_DOMAIN}", "hello.${CLUSTER_DOMAIN}"]
   # ── end new ──
   rules:
     - backendRefs:
@@ -360,7 +360,7 @@ spec:
     - name: web
       namespace: gateway
   # ── new ──
-  hostnames: [podinfo.${CLUSTER_DOMAIN}]
+  hostnames: ["podinfo.${CLUSTER_DOMAIN}"]
   # ── end new ──
   rules:
     - backendRefs:

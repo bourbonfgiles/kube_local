@@ -172,7 +172,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [otel.${CLUSTER_DOMAIN}]
+  hostnames: ["otel.${CLUSTER_DOMAIN}"]
   rules:
     - backendRefs:
         - name: frontend-proxy
@@ -257,7 +257,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [otel.${CLUSTER_DOMAIN}]
+  hostnames: ["otel.${CLUSTER_DOMAIN}"]
   rules:
     - backendRefs:
         - name: frontend-proxy
@@ -273,7 +273,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [jaeger.otel.${CLUSTER_DOMAIN}]
+  hostnames: ["jaeger.otel.${CLUSTER_DOMAIN}"]
   rules:
     - backendRefs:
         - name: jaeger

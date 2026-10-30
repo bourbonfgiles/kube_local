@@ -159,7 +159,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [chaos.${CLUSTER_DOMAIN}]
+  hostnames: ["chaos.${CLUSTER_DOMAIN}"]
   rules:
     - backendRefs:
         - name: chaos-dashboard

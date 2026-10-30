@@ -591,7 +591,7 @@ behind, so delete that last one by hand.
          # ── new ──
          sectionName: https
          # ── end new ──
-     hostnames: [podinfo.${CLUSTER_DOMAIN}]
+     hostnames: ["podinfo.${CLUSTER_DOMAIN}"]
      rules:
        - backendRefs:
            - name: podinfo

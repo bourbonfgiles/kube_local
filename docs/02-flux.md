@@ -416,7 +416,7 @@ layers.
      parentRefs:
        - name: web
          namespace: gateway
-     hostnames: [podinfo.${CLUSTER_DOMAIN}]
+     hostnames: ["podinfo.${CLUSTER_DOMAIN}"]
      rules:
        - backendRefs:
            - name: podinfo

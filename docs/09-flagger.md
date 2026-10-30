@@ -212,7 +212,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.${CLUSTER_DOMAIN}]
+    hosts: ["podinfo.${CLUSTER_DOMAIN}"]
     gatewayRefs:
       - name: web
         namespace: gateway
@@ -376,7 +376,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.${CLUSTER_DOMAIN}]
+    hosts: ["podinfo.${CLUSTER_DOMAIN}"]
     gatewayRefs:
       - name: web
         namespace: gateway
@@ -441,7 +441,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.${CLUSTER_DOMAIN}]
+    hosts: ["podinfo.${CLUSTER_DOMAIN}"]
     gatewayRefs:
       - name: web
         namespace: gateway
@@ -554,7 +554,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.${CLUSTER_DOMAIN}]
+    hosts: ["podinfo.${CLUSTER_DOMAIN}"]
     gatewayRefs:
       - name: web
         namespace: gateway
