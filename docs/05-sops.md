@@ -23,7 +23,7 @@ flowchart LR
 | age public key | `~/repos/personal/kube_local/.sops.yaml` in the repo | Anyone can encrypt with it |
 | age private key | `~/.config/sops/age/keys.txt`, and Secret `flux-system/sops-age` | The one thing never in Git |
 | `~/repos/personal/kube_local/.sops.yaml` | Repo root | Which files to encrypt, which fields, to which keys |
-| Encrypted Secret | `~/repos/personal/kube_local/secrets/local/*.yaml` | Safe to commit |
+| Encrypted Secret | `~/repos/personal/kube_local/secrets/dev/*.yaml` | Safe to commit |
 
 Flux decrypts at apply time, in memory. The plaintext only ever exists in the
 cluster's Secret.
@@ -66,8 +66,8 @@ Whoever runs that needs the private key. With Flux only the cluster does.
 | SOPS rules | | `~/repos/personal/kube_local/.sops.yaml` |
 | Secret | `flux-system/sops-age` | By hand only: it's the key to everything else |
 | Kustomization | `secrets` | `~/repos/personal/kube_local/clusters/dev/secrets.yaml` |
-| Secret, encrypted | `external-dns/externaldns-tsig` | `~/repos/personal/kube_local/secrets/local/external-dns-tsig.yaml` |
-| Secret, encrypted | `cert-manager/local-ca` | `~/repos/personal/kube_local/secrets/local/cert-manager-local-ca.yaml` |
+| Secret, encrypted | `external-dns/externaldns-tsig` | `~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml` |
+| Secret, encrypted | `cert-manager/local-ca` | `~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml` |
 
 ### 1. A key pair
 
@@ -107,12 +107,12 @@ The TSIG Secret, encrypted before it's staged. `--config` points sops at the
 rules, wherever you run it from:
 
 ```sh
-mkdir -p ~/repos/personal/kube_local/secrets/local
+mkdir -p ~/repos/personal/kube_local/secrets/dev
 kubectl --context k3d-dev -n external-dns create secret generic externaldns-tsig \
   --from-literal=secret="$(kubectl --context k3d-dev -n dns get secret externaldns-tsig \
     -o jsonpath='{.data.secret}' | base64 -d)" \
-  --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/local/external-dns-tsig.yaml
-sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/local/external-dns-tsig.yaml
+  --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml
+sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml
 ```
 
 The CA the same way:
@@ -120,9 +120,9 @@ The CA the same way:
 ```sh
 kubectl --context k3d-dev -n cert-manager create secret tls local-ca \
   --cert="$(mkcert -CAROOT)/rootCA.pem" --key="$(mkcert -CAROOT)/rootCA-key.pem" \
-  --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/local/cert-manager-local-ca.yaml
-sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/local/cert-manager-local-ca.yaml
-cat ~/repos/personal/kube_local/secrets/local/cert-manager-local-ca.yaml
+  --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml
+sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml
+cat ~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml
 ```
 
 `data` is ciphertext; `metadata` is readable; a `sops:` block at the end
@@ -145,7 +145,7 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  path: ./secrets/local
+  path: ./secrets/dev
   prune: true
   decryption:
     provider: sops
@@ -178,9 +178,9 @@ A throwaway Secret, committed encrypted and removed at the end.
 
 ```sh
 kubectl --context k3d-dev -n default create secret generic demo \
-  --from-literal=password=hunter2 --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/local/demo.yaml
-sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/local/demo.yaml
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/secrets/local/demo.yaml
+  --from-literal=password=hunter2 --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/dev/demo.yaml
+sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/dev/demo.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/secrets/dev/demo.yaml
 git -C ~/repos/personal/kube_local commit -m "SOPS demo secret"
 git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization secrets --with-source
@@ -194,12 +194,12 @@ sofka / k9s: `:secrets default`, `x` on `demo`
 ### 1. Edit it encrypted, and what Git sees
 
 ```sh
-sops set ~/repos/personal/kube_local/secrets/local/demo.yaml '["data"]["password"]' "\"$(printf hunter3 | base64)\""
-git -C ~/repos/personal/kube_local diff ~/repos/personal/kube_local/secrets/local/demo.yaml
+sops set ~/repos/personal/kube_local/secrets/dev/demo.yaml '["data"]["password"]' "\"$(printf hunter3 | base64)\""
+git -C ~/repos/personal/kube_local diff ~/repos/personal/kube_local/secrets/dev/demo.yaml
 ```
 
 Only that value's ciphertext and the `sops.mac` change. `sops
-secrets/local/demo.yaml` does the same in your editor, decrypted, and
+secrets/dev/demo.yaml` does the same in your editor, decrypted, and
 re-encrypts on save.
 
 ```sh
@@ -232,9 +232,9 @@ what it is.
 
 ```sh
 mv ~/.config/sops/age/keys.txt ~/.config/sops/age/keys.txt.aside
-sops --decrypt ~/repos/personal/kube_local/secrets/local/demo.yaml
+sops --decrypt ~/repos/personal/kube_local/secrets/dev/demo.yaml
 mv ~/.config/sops/age/keys.txt.aside ~/.config/sops/age/keys.txt
-sops --decrypt ~/repos/personal/kube_local/secrets/local/demo.yaml
+sops --decrypt ~/repos/personal/kube_local/secrets/dev/demo.yaml
 ```
 
 The first `--decrypt` fails as it would anywhere without the key; the second
@@ -243,7 +243,7 @@ works again. The cluster never noticed: it has its own copy in `sops-age`.
 ### 4. Remove it
 
 ```sh
-git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/secrets/local/demo.yaml
+git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/secrets/dev/demo.yaml
 git -C ~/repos/personal/kube_local commit -m "Drop the SOPS demo secret"
 git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization secrets --with-source
@@ -255,7 +255,7 @@ kubectl --context k3d-dev -n default get secret demo
 ## Exercises
 
 1. `git grep -nE 'hunter2|BEGIN (RSA |EC )?PRIVATE'` the whole repo: nothing.
-2. Edit the TSIG Secret with `sops ~/repos/personal/kube_local/secrets/local/external-dns-tsig.yaml`, push,
+2. Edit the TSIG Secret with `sops ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml`, push,
    and watch ExternalDNS's updates start failing. Put it back.
 3. Rebuild the cluster. Recreate `sops-age` (step 3) before Flux syncs
    `secrets`, and see everything else come back on its own.

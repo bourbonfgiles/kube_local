@@ -117,10 +117,11 @@ sets up:
 **Example only: the layout**
 ```
 ~/repos/personal/kube_local/
-  clusters/dev/            Flux's entry point: only Kustomizations, one per layer
-  infrastructure/base/     Platform components, as you'd deploy them on EKS
-  infrastructure/local/    The k3d-only parts: local values, *.kube.internal routes
-  apps/base/, apps/local/  The same split for applications
+  clusters/dev/              Flux's entry point: only Kustomizations, one per layer
+  infrastructure/base/       What every cluster gets, routes included; the domain is ${CLUSTER_DOMAIN}
+  infrastructure/dev/        Only what differs on this cluster: its values, its own objects
+  infrastructure/dev-config/ This cluster's objects whose CRDs come from a chart
+  apps/base/, apps/dev/      The same split for applications
 ```
 
 A chart's values file becomes a ConfigMap that the HelmRelease reads.

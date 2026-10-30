@@ -84,8 +84,8 @@ For the real podinfo, so lesson 8's commits become canaries.
 | HelmRelease | `flagger` | `~/repos/personal/kube_local/infrastructure/base/flagger/release.yaml` |
 | ConfigMap | `flagger-values-base` | `~/repos/personal/kube_local/infrastructure/base/flagger/values.yaml` |
 | HelmRelease | `podinfo/loadtester` | `~/repos/personal/kube_local/apps/base/podinfo/loadtester.yaml` |
-| Canary | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml` (names the local hostname) |
-| HTTPRoute, deleted | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/local/podinfo/route.yaml`: Flagger owns the route now |
+| Canary | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml` |
+| HTTPRoute, deleted | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/route.yaml`: Flagger owns the route now |
 | ConfigMap, changed | `podinfo-values-base` | `~/repos/personal/kube_local/apps/base/podinfo/values.yaml`: `service.enabled: false` |
 | HelmRelease, changed | `podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`: drift detection ignores replicas |
 
@@ -197,9 +197,9 @@ The Canary. The load goes through the Gateway, not straight to the canary
 Service: Hubble only records HTTP metrics for traffic Cilium's Envoy handles,
 and the weighted split only happens there.
 
-**Write `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
+**Write `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -212,7 +212,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.kube.internal]
+    hosts: [podinfo.${CLUSTER_DOMAIN}]
     gatewayRefs:
       - name: web
         namespace: gateway
@@ -225,7 +225,7 @@ spec:
       - name: load
         url: http://loadtester.podinfo/
         metadata:
-          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.kube.internal http://cilium-gateway-web.gateway/"
+          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.${CLUSTER_DOMAIN} http://cilium-gateway-web.gateway/"
 ```
 
 Flagger creates the Services, so podinfo's own is off:
@@ -276,7 +276,7 @@ spec:
     - kind: ConfigMap
       name: podinfo-values-base
     - kind: ConfigMap
-      name: podinfo-values-local
+      name: podinfo-values-${CLUSTER_NAME}
   values:
     image:
       tag: 6.7.1 # {"$imagepolicy": "podinfo:podinfo:tag"}
@@ -285,7 +285,7 @@ spec:
 Flagger owns the route now:
 
 ```sh
-git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/apps/local/podinfo/route.yaml
+git -C ~/repos/personal/kube_local rm ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
 ```
 
 ### 3. Push and check
@@ -295,7 +295,8 @@ git -C ~/repos/personal/kube_local pull
 git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
 git -C ~/repos/personal/kube_local commit -m "Canary releases for podinfo"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
 
@@ -324,13 +325,13 @@ New or changed lines sit between `# ── new ──` and `# ── end new ─
 
 ### 1. A release
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: podinfo-values-local
+  name: podinfo-values-dev
   namespace: podinfo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -346,10 +347,10 @@ data:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: release one"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
 
@@ -360,9 +361,9 @@ it promotes. Watch the weights with
 
 ### 2. Bigger steps
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -375,7 +376,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.kube.internal]
+    hosts: [podinfo.${CLUSTER_DOMAIN}]
     gatewayRefs:
       - name: web
         namespace: gateway
@@ -390,16 +391,16 @@ spec:
       - name: load
         url: http://loadtester.podinfo/
         metadata:
-          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.kube.internal http://cilium-gateway-web.gateway/"
+          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.${CLUSTER_DOMAIN} http://cilium-gateway-web.gateway/"
 ```
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: podinfo-values-local
+  name: podinfo-values-dev
   namespace: podinfo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -415,18 +416,19 @@ data:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: bigger steps, release two"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
 
 Fewer, bigger steps. Back to 10:
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -439,7 +441,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.kube.internal]
+    hosts: [podinfo.${CLUSTER_DOMAIN}]
     gatewayRefs:
       - name: web
         namespace: gateway
@@ -454,26 +456,26 @@ spec:
       - name: load
         url: http://loadtester.podinfo/
         metadata:
-          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.kube.internal http://cilium-gateway-web.gateway/"
+          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.${CLUSTER_DOMAIN} http://cilium-gateway-web.gateway/"
 ```
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: steps of 10"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-base --with-source
 ```
 
 ### 3. A faulty release, with nothing watching
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: podinfo-values-local
+  name: podinfo-values-dev
   namespace: podinfo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -491,10 +493,10 @@ data:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: faulty release"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
 
@@ -505,7 +507,7 @@ but errors. Revert the commit, the way you would in real life:
 git -C ~/repos/personal/kube_local pull
 git -C ~/repos/personal/kube_local revert --no-edit HEAD
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
 
@@ -537,9 +539,9 @@ spec:
     sum(rate(hubble_http_requests_total{destination_namespace="podinfo",destination_workload="podinfo"}[1m]))
 ```
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/canary.yaml`**
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/canary.yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
 kind: Canary
 metadata:
@@ -552,7 +554,7 @@ spec:
     name: podinfo
   service:
     port: 9898
-    hosts: [podinfo.kube.internal]
+    hosts: [podinfo.${CLUSTER_DOMAIN}]
     gatewayRefs:
       - name: web
         namespace: gateway
@@ -574,7 +576,7 @@ spec:
       - name: load
         url: http://loadtester.podinfo/
         metadata:
-          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.kube.internal http://cilium-gateway-web.gateway/"
+          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.${CLUSTER_DOMAIN} http://cilium-gateway-web.gateway/"
 ```
 
 ```sh
@@ -582,18 +584,19 @@ git -C ~/repos/personal/kube_local pull
 git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
 git -C ~/repos/personal/kube_local commit -m "podinfo: error-rate check"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 ```
 
 Now the same faulty release:
 
-**Replace `~/repos/personal/kube_local/apps/local/podinfo/values.yaml`**
+**Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: podinfo-values-local
+  name: podinfo-values-dev
   namespace: podinfo
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -611,10 +614,10 @@ data:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/local/podinfo/values.yaml
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 git -C ~/repos/personal/kube_local commit -m "podinfo: faulty release again"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev get canaries -n podinfo -w
 ```
 
@@ -628,7 +631,7 @@ kubectl --context k3d-dev -n flagger-system logs deploy/flagger --tail 50
 git -C ~/repos/personal/kube_local pull
 git -C ~/repos/personal/kube_local revert --no-edit HEAD
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-local --with-source
+flux --context k3d-dev reconcile kustomization apps-dev --with-source
 ```
 
 sofka / k9s: `d` on the Canary; `:pods flagger-system`, `l`.
@@ -656,13 +659,13 @@ an empty folder, so each keeps a `.gitkeep`:
 
 ```sh
 git -C ~/repos/personal/kube_local pull
-git -C ~/repos/personal/kube_local rm -r ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/local/podinfo
-touch ~/repos/personal/kube_local/apps/base/.gitkeep ~/repos/personal/kube_local/apps/local/.gitkeep
+git -C ~/repos/personal/kube_local rm -r ~/repos/personal/kube_local/apps/base/podinfo ~/repos/personal/kube_local/apps/dev/podinfo
+touch ~/repos/personal/kube_local/apps/base/.gitkeep ~/repos/personal/kube_local/apps/dev/.gitkeep
 git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/
 git -C ~/repos/personal/kube_local commit -m "Retire podinfo"
 git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
-flux --context k3d-dev reconcile kustomization apps-local
+flux --context k3d-dev reconcile kustomization apps-dev
 flux --context k3d-dev reconcile kustomization apps-base
 kubectl --context k3d-dev get namespace podinfo
 ```

@@ -59,7 +59,7 @@ or `k9s` ([lesson 0](00-tools.md)).
 > Read this, don't run it. Flux does the same from Git below.
 
 By hand, the stack is two `helm` commands: the CRDs first, then the stack
-with a base and a local values file.
+with a base and a dev values file.
 
 **Example only: don't run it**
 ```sh
@@ -68,7 +68,7 @@ helm --kube-context k3d-dev upgrade --install prometheus-operator-crds prometheu
   -n monitoring --create-namespace
 helm --kube-context k3d-dev upgrade --install kube-prometheus-stack kube-prometheus-stack \
   --repo https://prometheus-community.github.io/helm-charts --version 92.10.1 \
-  -n monitoring -f values-base.yaml -f values-local.yaml
+  -n monitoring -f values-base.yaml -f values-dev.yaml
 ```
 
 With Flux the order becomes `dependsOn`.
@@ -82,9 +82,9 @@ With Flux the order becomes `dependsOn`.
 | HelmRelease | `prometheus-operator-crds` | `~/repos/personal/kube_local/infrastructure/base/monitoring/crds.yaml` |
 | HelmRelease | `kube-prometheus-stack` | `~/repos/personal/kube_local/infrastructure/base/monitoring/release.yaml` |
 | ConfigMap | `kube-prometheus-stack-values-base` | `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml` |
-| ConfigMap | `kube-prometheus-stack-values-local` | `~/repos/personal/kube_local/infrastructure/local/monitoring/values.yaml` |
+| ConfigMap | `kube-prometheus-stack-values-dev` | `~/repos/personal/kube_local/infrastructure/dev/monitoring/values.yaml` |
 | ServiceMonitor | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml` |
-| HTTPRoute | `grafana` | `~/repos/personal/kube_local/infrastructure/local/monitoring/route.yaml` |
+| HTTPRoute | `grafana` | `~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml` |
 | ConfigMap, changed | `kube-system/cilium-values-base` | `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` |
 | HelmRelease, changed | `kube-system/cilium` | `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` |
 
@@ -93,7 +93,7 @@ With Flux the order becomes `dependsOn`.
 One HelmRepository for both charts. The stack waits for the CRDs release.
 
 ```sh
-mkdir -p ~/repos/personal/kube_local/infrastructure/base/monitoring ~/repos/personal/kube_local/infrastructure/local/monitoring
+mkdir -p ~/repos/personal/kube_local/infrastructure/base/monitoring ~/repos/personal/kube_local/infrastructure/dev/monitoring
 ```
 
 **Write `~/repos/personal/kube_local/infrastructure/base/monitoring/namespace.yaml`**
@@ -160,7 +160,7 @@ spec:
     - kind: ConfigMap
       name: kube-prometheus-stack-values-base
     - kind: ConfigMap
-      name: kube-prometheus-stack-values-local
+      name: kube-prometheus-stack-values-${CLUSTER_NAME}
 ```
 
 **Write `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml`**
@@ -183,13 +183,13 @@ data:
         podMonitorSelectorNilUsesHelmValues: false
 ```
 
-**Write `~/repos/personal/kube_local/infrastructure/local/monitoring/values.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/dev/monitoring/values.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/monitoring/values.yaml
+# ~/repos/personal/kube_local/infrastructure/dev/monitoring/values.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kube-prometheus-stack-values-local
+  name: kube-prometheus-stack-values-dev
   namespace: monitoring
   labels:
     reconcile.fluxcd.io/watch: Enabled
@@ -207,9 +207,9 @@ data:
 
 ### 2. Grafana's route
 
-**Write `~/repos/personal/kube_local/infrastructure/local/monitoring/route.yaml`**
+**Write `~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml`**
 ```yaml
-# ~/repos/personal/kube_local/infrastructure/local/monitoring/route.yaml
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -219,7 +219,7 @@ spec:
   parentRefs:
     - name: web
       namespace: gateway
-  hostnames: [grafana.kube.internal]
+  hostnames: [grafana.${CLUSTER_DOMAIN}]
   rules:
     - backendRefs:
         - name: kube-prometheus-stack-grafana
@@ -312,7 +312,7 @@ spec:
     - kind: ConfigMap
       name: cilium-values-base
     - kind: ConfigMap
-      name: cilium-values-local
+      name: cilium-values-${CLUSTER_NAME}
 ```
 
 ### 4. Push and watch
