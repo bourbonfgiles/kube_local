@@ -17,7 +17,6 @@ overlays/local/               Everything that only exists because this is k3d.
   dns/tsig-secret.sh          TSIG key BIND accepts updates with. Never in Git.
   dns/coredns-custom.yaml     Pods resolve kube.internal through BIND.
 docs/                         Lessons: what to install next, by hand then with Flux.
-scratch/                      Your by-hand experiments from the lessons. Ignored by Git.
 ```
 
 Helm merges `cilium/values.yaml` then `overlays/local/cilium-values.yaml`. No
@@ -54,7 +53,7 @@ flowchart LR
 | Gateway API | v1.6.3 standard CRDs, GatewayClass `cilium` |
 | LoadBalancer | Cilium LB-IPAM + L2 announcements, `10.89.0.200-250`, reachable from the host |
 | DNS zone | BIND for `kube.internal` on `10.89.0.250`, empty, RFC2136 updates with TSIG key `externaldns` (`hmac-sha256`) |
-| Name resolution | Pods via CoreDNS forward; host via the os_build image's `kube-internal-dns` unit (Linux) |
+| Name resolution | Pods via CoreDNS forward; host via resolved on `k3d0` (Linux) |
 | Observability | Hubble relay + UI, `bpf.monitorAggregation: none` |
 | Storage | k3s `local-path`, `WaitForFirstConsumer` |
 | Metrics | k3s `metrics-server`, so `kubectl top` and HPAs work |
@@ -71,50 +70,17 @@ Local (`overlays/local/cilium-values.yaml`):
 
 | Setting | Why |
 | --- | --- |
-| `k8sServiceHost: k3d-dev-serverlb`, port 6443 | No kube-proxy, so Cilium needs the API server address directly. |
+| `k8sServicePort: 6443`; `bootstrap.sh` sets `k8sServiceHost` to `<context>-serverlb` | No kube-proxy, so Cilium needs the API server address directly. |
 | `routingMode: tunnel`, vxlan | k3d doesn't install pod CIDR routes on nodes. |
 | `l2announcements.enabled` | Stands in for a cloud load balancer, with `lb-ipam.yaml`. |
 | `cgroup.autoMount.enabled: false`, `cgroup.hostRoot: /sys/fs/cgroup` | k3d nodes don't propagate mounts; without this, ClusterIPs fail with `network is unreachable`. |
 | `ipam.mode: kubernetes` | Pods use k3s's `10.42.0.0/16`. Cilium's default `10.0.0.0/8` overlaps the node network. |
 | `operator.replicas: 1` | One server node. |
 
-## How it links to dotfiles and os_build
+## Shared values
 
-```mermaid
-flowchart LR
-  subgraph os_build["os_build image (Linux)"]
-    sock["Rootful Podman socket"]
-    hostdns["Host DNS rule<br/>*.kube.internal to 10.89.0.250"]
-  end
-  subgraph dotfiles["dotfiles: empty cluster"]
-    net["Network k3d-dev<br/>10.89.0.0/24, bridge k3d0"]
-    net --> reg["Registry<br/>localhost:5050"]
-    net --> k3d["k3d cluster dev<br/>1 server + 3 agents<br/>no CNI"]
-  end
-  sock --> net
-  subgraph kube_local["kube_local: platform"]
-    boot["overlays/local/bootstrap.sh"] --> crds["Gateway API CRDs"] --> cilium["Cilium"] --> pool["LB pool<br/>10.89.0.200-250"] --> bind["BIND kube.internal<br/>10.89.0.250"]
-  end
-  subgraph gitops["You, via Flux"]
-    flux["flux bootstrap"] --> apps["Gateway, routes,<br/>ExternalDNS, apps"]
-  end
-  k3d -->|"context k3d-dev"| boot
-  hostdns -.->|"resolves via"| bind
-  bind --> flux
-  flux -->|"pulls"| gh["GitHub kube_local master"]
-```
-
-The repos don't call each other. They share these values, so change both sides
-together. The dotfiles side is in its `kubernetes.md`.
-
-| Value | dotfiles / os_build | kube_local |
-| --- | --- | --- |
-| Cluster `dev`, context `k3d-dev` | `home/dot_config/k3d/config.yaml` | `bootstrap.sh` default argument |
-| API endpoint `k3d-dev-serverlb:6443` | k3d's load balancer | `overlays/local/cilium-values.yaml` |
-| Network `10.89.0.0/24` | `kube-create` in dotfiles' `home/dot_zshrc` | `overlays/local/lb-ipam.yaml` |
-| DNS `10.89.0.250`, zone `kube.internal` | os_build `kube-internal-dns.service` | `overlays/local/dns/bind.yaml` |
-| flannel, kube-proxy, servicelb, traefik, network policy off | k3s args | Cilium replaces them |
-| Registry `k3d-registry.localhost:5000` | `kube-create` | image references |
+The cluster name, network, DNS address and registry are shared with dotfiles
+and os_build. The list is in dotfiles' [kubernetes.md](https://github.com/bourbonfgiles/dotfiles/blob/master/kubernetes.md#how-the-repos-fit).
 
 ## Working with the cluster
 
@@ -140,10 +106,10 @@ context.
 | ClusterIPs `network is unreachable` | cgroup settings changed on a live cluster; Cilium keeps its pinned hooks | Rebuild the cluster. |
 | `type: LoadBalancer` stuck `<pending>` | `lb-ipam.yaml` not applied, or range outside the network | `kpodman network inspect k3d-dev`, re-run `bootstrap.sh`. |
 | Route returns 503 after adding NetworkPolicies | Cilium's Gateway reaches pods from the `ingress` identity, which a plain `NetworkPolicy` can't select | `CiliumNetworkPolicy` with `fromEntities: [ingress]`. Hubble shows no `DROPPED`; Envoy refuses it. |
-| External lookups from pods stall | LAN search domain inherited (fixed in dotfiles) | Check a pod's `/etc/resolv.conf` has no `fritz.box`. |
-| `kube.internal` doesn't resolve on the host | os_build unit not active | `systemctl status kube-internal-dns`, `resolvectl status k3d0`. |
+| External lookups from pods stall | The host's LAN search domain reached pods | A pod's `/etc/resolv.conf` should list only cluster search domains. |
+| `kube.internal` doesn't resolve on the host | `kube-internal-dns` not active | `systemctl status kube-internal-dns`, `resolvectl status k3d0`. |
 | Records vanish after BIND restarts | Zone lives in an `emptyDir` | Whatever writes records (ExternalDNS) re-syncs. |
-| `k3d cluster create` fails reading logs | Podman's journald reader | `kube-create` and `kube-up` retry; the os_build image sets file logging. |
+| `k3d cluster create` fails reading logs | Podman's journald log reader | `kube-create` and `kube-up` retry. |
 | Pods can't pull `localhost:5050/...` | That name is the host's | Use `k3d-registry.localhost:5000/...`. |
 | `curl` from a pod to `k3d-registry.localhost` is refused | curl sends every `*.localhost` name to `127.0.0.1` | Test with `wget` or `curl --resolve`; Flux and containerd resolve it normally. |
 

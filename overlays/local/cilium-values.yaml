@@ -1,5 +1,5 @@
 # kube-proxy is disabled, so Cilium needs the API server address directly.
-k8sServiceHost: k3d-dev-serverlb
+# bootstrap.sh sets k8sServiceHost from the cluster name.
 k8sServicePort: 6443
 
 # Native routing would need pod CIDR routes on every node; k3d doesn't add them.
