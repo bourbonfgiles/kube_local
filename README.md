@@ -17,6 +17,7 @@ overlays/local/               Everything that only exists because this is k3d.
   dns/tsig-secret.sh          TSIG key BIND accepts updates with. Never in Git.
   dns/coredns-custom.yaml     Pods resolve kube.internal through BIND.
 docs/                         Lessons: what to install next, by hand then with Flux.
+.github/renovate.json5        Renovate: bumps the Cilium and Gateway API pins in bootstrap.sh.
 ```
 
 Helm merges `cilium/values.yaml` then `overlays/local/cilium-values.yaml`. No
@@ -49,8 +50,8 @@ flowchart LR
 | --- | --- |
 | Nodes | 1 server (etcd, tainted `NoSchedule`) + 3 agents labelled `eu-west-2a/b/c`, `m5.large`, nodegroup `general` |
 | Kubernetes | k3s 1.36 |
-| CNI and Services | Cilium 1.20.3, kube-proxy replacement, vxlan tunnel |
-| Gateway API | v1.6.3 standard CRDs, GatewayClass `cilium` |
+| CNI and Services | Cilium (pinned in `bootstrap.sh`), kube-proxy replacement, vxlan tunnel |
+| Gateway API | Standard CRDs (pinned in `bootstrap.sh`), GatewayClass `cilium` |
 | LoadBalancer | Cilium LB-IPAM + L2 announcements, `10.89.0.200-250`, reachable from the host |
 | DNS zone | BIND for `kube.internal` on `10.89.0.250`, empty, RFC2136 updates with TSIG key `externaldns` (`hmac-sha256`) |
 | Name resolution | Pods via CoreDNS forward; host via resolved on `k3d0` (Linux) |

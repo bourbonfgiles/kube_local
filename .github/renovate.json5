@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "enabledManagers": ["custom.regex"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^overlays/local/bootstrap\\.sh$/"],
+      "matchStrings": ["CILIUM_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://helm.cilium.io",
+      "depNameTemplate": "cilium"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^overlays/local/bootstrap\\.sh$/"],
+      "matchStrings": ["GATEWAY_API_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "kubernetes-sigs/gateway-api"
+    }
+  ]
+}
