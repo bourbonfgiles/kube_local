@@ -44,7 +44,7 @@ TSIG key. The sources, policy and registry values don't change.
 
 **On your machine**: `kubectl`, `helm`, `flux`, `dig`, `curl`, and `sofka` or
 `k9s` ([lesson 0](00-tools.md)). The
-host resolves `kube.internal` through the dotfiles `dotfiles-kube-dns`
+host resolves `kube.internal` through the os_build image's `kube-internal-dns`
 unit; `resolvectl status k3d0` should list `10.89.0.250`.
 
 ## By hand, for comparison
@@ -315,9 +315,9 @@ Each row is one commit, then its revert. What happens is the point; try any you 
 - Without `--rfc2136-axfr` it can't read the zone back, so it never deletes
   anything.
 - A Gateway without an address produces no records for its routes.
-- On your machine, names only resolve through the dotfiles DNS unit. If `dig
+- On your machine, names only resolve through the os_build DNS unit. If `dig
   @10.89.0.250` works but `curl` doesn't, it's the host side:
-  `systemctl status dotfiles-kube-dns`.
+  `systemctl status kube-internal-dns`.
 - Errors from BIND show only in ExternalDNS's logs, often as a terse
   `NOTAUTH` or `REFUSED`. Those usually mean a wrong key name, algorithm or
   zone. A sofka extra ([lesson 0](00-tools.md)): `ctrl-z` in the logs view
