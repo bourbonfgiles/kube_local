@@ -26,9 +26,8 @@ Kustomize.
 ## Usage
 
 ```sh
-# dotfiles: empty cluster, nodes NotReady
-cd ~/repos/personal/dotfiles
-uv run python -c 'from dotfiles.services import k8s; k8s.create_cluster()'
+# dotfiles (zsh function): empty cluster, nodes NotReady
+kube-create
 
 # here: platform
 ./overlays/local/bootstrap.sh
@@ -104,14 +103,14 @@ flowchart LR
 The repos don't call each other. They share these values, so change both sides
 together. The dotfiles side is in its `kubernetes.md`.
 
-| Value | dotfiles | kube_local |
+| Value | dotfiles / os_build | kube_local |
 | --- | --- | --- |
 | Cluster `dev`, context `k3d-dev` | `home/dot_config/k3d/config.yaml` | `bootstrap.sh` default argument |
 | API endpoint `k3d-dev-serverlb:6443` | k3d's load balancer | `overlays/local/cilium-values.yaml` |
-| Network `10.89.0.0/24` | `_CLUSTER_SUBNET` in `services/k8s.py` | `overlays/local/lb-ipam.yaml` |
-| DNS `10.89.0.250`, zone `kube.internal` | `_KUBE_DNS_SERVER`, `_KUBE_DNS_DOMAIN` | `overlays/local/dns/bind.yaml` |
+| Network `10.89.0.0/24` | `kube-create` in dotfiles' `home/dot_zshrc` | `overlays/local/lb-ipam.yaml` |
+| DNS `10.89.0.250`, zone `kube.internal` | os_build `kube-internal-dns.service` | `overlays/local/dns/bind.yaml` |
 | flannel, kube-proxy, servicelb, traefik, network policy off | k3s args | Cilium replaces them |
-| Registry `k3d-registry.localhost:5000` | `services/k8s.py` | image references |
+| Registry `k3d-registry.localhost:5000` | `kube-create` | image references |
 
 ## Working with the cluster
 
@@ -138,7 +137,7 @@ context.
 | `type: LoadBalancer` stuck `<pending>` | `lb-ipam.yaml` not applied, or range outside the network | `kpodman network inspect k3d-dev`, re-run `bootstrap.sh`. |
 | Route returns 503 after adding NetworkPolicies | Cilium's Gateway reaches pods from the `ingress` identity, which a plain `NetworkPolicy` can't select | `CiliumNetworkPolicy` with `fromEntities: [ingress]`. Hubble shows no `DROPPED`; Envoy refuses it. |
 | External lookups from pods stall | LAN search domain inherited (fixed in dotfiles) | Check a pod's `/etc/resolv.conf` has no `fritz.box`. |
-| `kube.internal` doesn't resolve on the host | dotfiles unit not active | `systemctl status dotfiles-kube-dns`, `resolvectl status k3d0`. |
+| `kube.internal` doesn't resolve on the host | os_build unit not active | `systemctl status kube-internal-dns`, `resolvectl status k3d0`. |
 | Records vanish after BIND restarts | Zone lives in an `emptyDir` | Whatever writes records (ExternalDNS) re-syncs. |
 | `k3d cluster create` fails reading logs | Podman's journald reader | dotfiles retries; file logging comes from its `k8s` step. |
 | Pods can't pull `localhost:5050/...` | That name is the host's | Use `k3d-registry.localhost:5000/...`. |
