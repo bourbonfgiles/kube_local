@@ -157,14 +157,14 @@ You need a new one only if you bootstrap again, for example on a new cluster.
 ```sh
 flux bootstrap github --context k3d-dev \
   --owner bourbonfgiles --repository kube_local --personal --private=false \
-  --branch master --path ~/repos/personal/kube_local/clusters/dev \
+  --branch master --path clusters/dev \
   --components-extra image-reflector-controller,image-automation-controller \
   --read-write-key
 ```
 
 | Flag | Why |
 | --- | --- |
-| `--path clusters/dev` | Flux applies everything under this folder. It's the entry point. |
+| `--path clusters/dev` | Flux applies everything under this folder. It's the entry point. Relative to the repo root, not a local path. |
 | `--components-extra ...` | The image controllers for lesson 8. Adding them later means bootstrapping again. |
 | `--read-write-key` | The deploy key can push, also for lesson 8. A read-only key isn't upgraded in place. |
 
