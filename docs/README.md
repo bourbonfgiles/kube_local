@@ -90,11 +90,11 @@ lesson lists the ones it needs.
 | `sops`, `age`, `age-keygen` | 5 | dotfiles brewfile (`age-keygen` comes with `age`) |
 | `skopeo` | 7, 8 | Bazzite base image |
 | `go`, `ko`, `kwok`, `make` | 12 | dotfiles brewfile; `make` from the base image |
-| `bpftrace`, BCC tools, `bpftool`, `perf` | 13 | dotfiles `bpf` step, then a reboot |
+| `bpftrace`, BCC tools, `bpftool`, `perf` | 13 | os_build image |
 | Minecraft Java client | 13 | Not provided |
 
-Check with `command -v <tool>`. If one's missing, run the dotfiles step that
-provides it rather than installing it by hand.
+Check with `command -v <tool>`. If one's missing, add it to the dotfiles brewfile
+and run `chezmoi apply` rather than installing it by hand.
 
 ## How you work
 

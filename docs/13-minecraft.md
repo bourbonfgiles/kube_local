@@ -46,7 +46,7 @@ service.
 | --- | --- |
 | `kubectl`, `helm`, `flux`, `git` | As usual |
 | `sofka` or `k9s` | [Lesson 0](00-tools.md) |
-| `bpftrace`, BCC tools in `/usr/share/bcc/tools/` | Profiling. The dotfiles `bpf` step, then a reboot. |
+| `bpftrace`, BCC tools in `/usr/share/bcc/tools/` | Profiling. Built into the os_build image. |
 | A Minecraft Java client | Joining |
 
 ## By hand, for comparison

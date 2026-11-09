@@ -54,7 +54,7 @@ flowchart LR
 | Gateway API | v1.6.3 standard CRDs, GatewayClass `cilium` |
 | LoadBalancer | Cilium LB-IPAM + L2 announcements, `10.89.0.200-250`, reachable from the host |
 | DNS zone | BIND for `kube.internal` on `10.89.0.250`, empty, RFC2136 updates with TSIG key `externaldns` (`hmac-sha256`) |
-| Name resolution | Pods via CoreDNS forward; host via a dotfiles systemd unit (Linux) |
+| Name resolution | Pods via CoreDNS forward; host via the os_build image's `kube-internal-dns` unit (Linux) |
 | Observability | Hubble relay + UI, `bpf.monitorAggregation: none` |
 | Storage | k3s `local-path`, `WaitForFirstConsumer` |
 | Metrics | k3s `metrics-server`, so `kubectl top` and HPAs work |
@@ -78,16 +78,20 @@ Local (`overlays/local/cilium-values.yaml`):
 | `ipam.mode: kubernetes` | Pods use k3s's `10.42.0.0/16`. Cilium's default `10.0.0.0/8` overlaps the node network. |
 | `operator.replicas: 1` | One server node. |
 
-## How it links to dotfiles
+## How it links to dotfiles and os_build
 
 ```mermaid
 flowchart LR
-  subgraph dotfiles["dotfiles: host + empty cluster"]
-    sock["Rootful Podman socket"] --> net["Network k3d-dev<br/>10.89.0.0/24, bridge k3d0"]
-    net --> reg["Registry<br/>localhost:5050"]
-    net --> k3d["k3d cluster dev<br/>1 server + 3 agents<br/>no CNI"]
+  subgraph os_build["os_build image (Linux)"]
+    sock["Rootful Podman socket"]
     hostdns["Host DNS rule<br/>*.kube.internal to 10.89.0.250"]
   end
+  subgraph dotfiles["dotfiles: empty cluster"]
+    net["Network k3d-dev<br/>10.89.0.0/24, bridge k3d0"]
+    net --> reg["Registry<br/>localhost:5050"]
+    net --> k3d["k3d cluster dev<br/>1 server + 3 agents<br/>no CNI"]
+  end
+  sock --> net
   subgraph kube_local["kube_local: platform"]
     boot["overlays/local/bootstrap.sh"] --> crds["Gateway API CRDs"] --> cilium["Cilium"] --> pool["LB pool<br/>10.89.0.200-250"] --> bind["BIND kube.internal<br/>10.89.0.250"]
   end
@@ -139,7 +143,7 @@ context.
 | External lookups from pods stall | LAN search domain inherited (fixed in dotfiles) | Check a pod's `/etc/resolv.conf` has no `fritz.box`. |
 | `kube.internal` doesn't resolve on the host | os_build unit not active | `systemctl status kube-internal-dns`, `resolvectl status k3d0`. |
 | Records vanish after BIND restarts | Zone lives in an `emptyDir` | Whatever writes records (ExternalDNS) re-syncs. |
-| `k3d cluster create` fails reading logs | Podman's journald reader | dotfiles retries; file logging comes from its `k8s` step. |
+| `k3d cluster create` fails reading logs | Podman's journald reader | `kube-create` and `kube-up` retry; the os_build image sets file logging. |
 | Pods can't pull `localhost:5050/...` | That name is the host's | Use `k3d-registry.localhost:5000/...`. |
 | `curl` from a pod to `k3d-registry.localhost` is refused | curl sends every `*.localhost` name to `127.0.0.1` | Test with `wget` or `curl --resolve`; Flux and containerd resolve it normally. |
 

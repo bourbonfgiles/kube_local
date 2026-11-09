@@ -15,7 +15,7 @@ flowchart LR
   route["HTTPRoute<br/>podinfo.kube.internal"] --> gw["Gateway web<br/>status address 10.89.0.200"]
   gw --> ed["ExternalDNS<br/>source: gateway-httproute"]
   ed -->|"RFC2136 update,<br/>signed with TSIG key"| bind["BIND<br/>kube.internal on 10.89.0.250"]
-  host["Your machine<br/>dotfiles DNS rule"] -->|"*.kube.internal ?"| bind
+  host["Your machine<br/>os_build DNS rule"] -->|"*.kube.internal ?"| bind
 ```
 
 | Idea | Means |
