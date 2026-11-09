@@ -588,7 +588,7 @@ release name and namespace takes that release over, so Flux owns the CNI.
 | `~/repos/personal/kube_local/infrastructure/base/cilium/source.yaml` | HelmRepository `cilium` in `kube-system`, `url: https://helm.cilium.io` |
 | `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` | HelmRelease `cilium` in `kube-system`, `chart.spec.version: 1.20.3`, `valuesFrom` `cilium-values-base`, then `cilium-values-${CLUSTER_NAME}` |
 | `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` | ConfigMap `cilium-values-base`: the contents of `~/repos/personal/kube_local/cilium/values.yaml` |
-| `~/repos/personal/kube_local/infrastructure/dev/cilium/values.yaml` | ConfigMap `cilium-values-dev`: the contents of `~/repos/personal/kube_local/overlays/local/cilium-values.yaml` |
+| `~/repos/personal/kube_local/infrastructure/dev/cilium/values.yaml` | ConfigMap `cilium-values-dev`: the contents of `~/repos/personal/kube_local/overlays/local/cilium-values.yaml`, plus `k8sServiceHost` |
 
 **Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
 ```yaml
@@ -736,7 +736,8 @@ data:
 ```
 
 The ConfigMaps hold `~/repos/personal/kube_local/cilium/values.yaml` and
-`~/repos/personal/kube_local/overlays/local/cilium-values.yaml` unchanged.
+`~/repos/personal/kube_local/overlays/local/cilium-values.yaml` unchanged, plus
+`k8sServiceHost`, which `bootstrap.sh` passes with `--set` and Flux can't.
 
 1. Compare what's installed with what you're about to commit. The two
    ConfigMaps merged must give exactly this:

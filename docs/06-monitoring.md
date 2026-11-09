@@ -426,8 +426,8 @@ Each row is one commit, then its revert. What happens is the point; try any you 
   through the Gateway, or pods with an L7 CiliumNetworkPolicy.
 - Upgrading `prometheus-operator-crds` across a major version can need manual
   steps; read the chart's upgrade notes first.
-- Scraping the k3s control plane needs bind-address flags on the server, which
-  is a dotfiles change.
+- Scraping the k3s control plane needs bind-address flags on the server: a
+  dotfiles change, and a cluster rebuild.
 
 ## Links
 

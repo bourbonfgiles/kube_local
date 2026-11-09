@@ -171,7 +171,7 @@ Each is one or two charts and a clear thing to learn.
 | --- | --- |
 | GitOps | **Flux notifications**: `Provider` and `Alert` objects posting reconcile failures to Discord or Slack. |
 | GitOps | **Flux multi-tenancy**: a tenant namespace with its own service account, and a Flux `Kustomization` that can only touch it. |
-| GitOps | **Cluster upgrade drill**: bump k3s a minor in the dotfiles config, rebuild, let Flux restore everything. Then a Cilium minor. |
+| GitOps | **Cluster upgrade drill**: bump k3s a minor in the dotfiles config, rebuild, give Flux a new deploy key, let it restore everything. Then a Cilium minor. |
 | Security | **Tetragon**: Cilium's eBPF runtime security. Trace process execs and file access in pods. |
 | Security | **Kyverno**: policies such as "images only from the local registry", in audit then enforce mode. |
 | Security | **Trivy Operator**: vulnerability and config reports as CRDs you can browse in sofka or k9s. |
