@@ -120,8 +120,9 @@ git -C ~/repos/personal/kube_local switch master
 | GatewayClass `cilium` | `ACCEPTED` `True` |
 | `dig` | Returns the SOA record |
 
-Pass: merge the PR. Fail: leave a comment on the PR and roll back with
-`bootstrap.sh` on `master`.
+Pass: merge the PR. Fail: comment on the PR and run `bootstrap.sh` from
+`master`. Older CRDs don't always apply over newer ones; if it doesn't recover,
+`kube-delete` and `kube-create`.
 
 ## Troubleshooting
 
