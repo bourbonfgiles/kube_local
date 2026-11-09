@@ -48,7 +48,7 @@ flowchart LR
 
 | Capability | Detail |
 | --- | --- |
-| Nodes | 1 server (etcd, tainted `NoSchedule`) + 3 agents labelled `eu-west-2a/b/c`, `m5.large`, nodegroup `general` |
+| Nodes | `controlplane` (etcd, tainted `NoSchedule`) + 3 workers named like EKS (`i-0a1b2c3d4e5f60001.eu-west-2.compute.internal`), labelled `eu-west-2a/b/c`, `m5.large`, nodegroup `general` |
 | Kubernetes | k3s 1.36 |
 | CNI and Services | Cilium (pinned in `bootstrap.sh`), kube-proxy replacement, vxlan tunnel |
 | Gateway API | Standard CRDs (pinned in `bootstrap.sh`), GatewayClass `cilium` |
