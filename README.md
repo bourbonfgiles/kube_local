@@ -98,6 +98,31 @@ context.
 | Query BIND | `dig @10.89.0.250 <name>.kube.internal` |
 | Read the TSIG secret | `kubectl --context k3d-dev -n dns get secret externaldns-tsig -o jsonpath='{.data.secret}' \| base64 -d` |
 
+## Bump Cilium or Gateway API
+
+Renovate opens the PR; nothing tests it but this. Run on the live cluster, which
+is the upgrade that will really happen:
+
+```sh
+git -C ~/repos/personal/kube_local fetch
+git -C ~/repos/personal/kube_local switch <renovate branch>
+~/repos/personal/kube_local/overlays/local/bootstrap.sh
+cilium status --context k3d-dev
+kubectl --context k3d-dev get gatewayclass cilium
+dig @10.89.0.250 kube.internal SOA +short
+git -C ~/repos/personal/kube_local switch master
+```
+
+| Check | Pass |
+| --- | --- |
+| `bootstrap.sh` | Exits 0 |
+| `cilium status` | All OK, no errors |
+| GatewayClass `cilium` | `ACCEPTED` `True` |
+| `dig` | Returns the SOA record |
+
+Pass: merge the PR. Fail: leave a comment on the PR and roll back with
+`bootstrap.sh` on `master`.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
