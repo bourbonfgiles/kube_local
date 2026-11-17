@@ -102,6 +102,24 @@ location is local; on EKS the same keys would name your ECR repo.
 | ConfigMap, changed | `podinfo/podinfo-values-dev` | `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml` |
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
@@ -158,6 +176,27 @@ Each row is one commit, then its revert. What happens is the point; try any you 
 Pull on every pod start, so the next restart sees whatever the tag points at:
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      tag: 6.7.0
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
@@ -215,6 +254,28 @@ default policy the nodes would keep the copy they cached. Then drop
 `pullPolicy`:
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      tag: 6.7.0
+      pullPolicy: Always
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1

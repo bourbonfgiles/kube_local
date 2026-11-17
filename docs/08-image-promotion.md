@@ -96,6 +96,30 @@ tag goes in the HelmRelease's `spec.values`, which also overrides every
 ConfigMap:
 
 **Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 10m
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  valuesFrom:
+    - kind: ConfigMap
+      name: podinfo-values-base
+    - kind: ConfigMap
+      name: podinfo-values-${CLUSTER_NAME}
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -125,6 +149,27 @@ spec:
 And take `tag` out of `podinfo-values-dev`, leaving the repository:
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      tag: 6.7.0
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1

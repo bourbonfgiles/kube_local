@@ -218,6 +218,62 @@ Then fix `bad-tag` and watch the rollout:
 #### Fix `bad-tag` to `6.7.1`
 
 **Replace `~/repos/personal/scratch/00/broken.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/scratch/00/broken.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: broken
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-tag
+  namespace: broken
+spec:
+  selector: {matchLabels: {app: bad-tag}}
+  template:
+    metadata: {labels: {app: bad-tag}}
+    spec:
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:0.0.0-nope
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crashloop
+  namespace: broken
+spec:
+  selector: {matchLabels: {app: crashloop}}
+  template:
+    metadata: {labels: {app: crashloop}}
+    spec:
+      containers:
+        - name: busybox
+          image: busybox:1.37
+          command: [sh, -c, "echo starting; sleep 2; echo oh no >&2; exit 1"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: too-big
+  namespace: broken
+spec:
+  selector: {matchLabels: {app: too-big}}
+  template:
+    metadata: {labels: {app: too-big}}
+    spec:
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.7.1
+          resources:
+            requests: {cpu: "64"}
+```
+
+After:
 ```yaml
 # ~/repos/personal/scratch/00/broken.yaml
 apiVersion: v1

@@ -210,6 +210,46 @@ ACME), so the Gateway in base names it through a new variable,
 `CLUSTER_ISSUER`:
 
 **Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/base
+  prune: true
+  postBuild:
+    substitute:
+      CLUSTER_NAME: dev
+      CLUSTER_DOMAIN: kube.internal
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-dev
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  dependsOn:
+    - name: infra-base
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/dev
+  prune: true
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -293,6 +333,32 @@ It stays in base: every cluster has an HTTPS Gateway. The hostname and issuer
 are the cluster's, so they're variables.
 
 **Replace `~/repos/personal/kube_local/infrastructure/base/gateway/gateway.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/gateway/gateway.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: web
+  namespace: gateway
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/infrastructure/base/gateway/gateway.yaml
 apiVersion: v1
@@ -446,6 +512,27 @@ behind, so delete that last one by hand.
    ```
 
    **Replace `~/repos/personal/kube_local/apps/base/podinfo/route.yaml`**
+
+   Before:
+   ```yaml
+   # ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: HTTPRoute
+   metadata:
+     name: podinfo
+     namespace: podinfo
+   spec:
+     parentRefs:
+       - name: web
+         namespace: gateway
+     hostnames: ["podinfo.${CLUSTER_DOMAIN}"]
+     rules:
+       - backendRefs:
+           - name: podinfo
+             port: 9898
+   ```
+
+   After:
    ```yaml
    # ~/repos/personal/kube_local/apps/base/podinfo/route.yaml
    apiVersion: gateway.networking.k8s.io/v1

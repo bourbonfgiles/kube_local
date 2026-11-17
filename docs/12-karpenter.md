@@ -389,6 +389,38 @@ and the `inflate` replicas in `~/repos/personal/kube_local/apps/dev/inflate/infl
 The NodePool goes back to step 5's, and `inflate` leaves Git:
 
 **Replace `~/repos/personal/kube_local/infrastructure/dev-config/karpenter/nodepool.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/infrastructure/dev-config/karpenter/nodepool.yaml
+apiVersion: karpenter.kwok.sh/v1alpha1
+kind: KWOKNodeClass
+metadata:
+  name: default
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: default
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.kwok.sh
+        kind: KWOKNodeClass
+        name: default
+      taints:
+        - key: kwok
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: [amd64]
+  limits:
+    cpu: 64
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/infrastructure/dev-config/karpenter/nodepool.yaml
 apiVersion: karpenter.kwok.sh/v1alpha1

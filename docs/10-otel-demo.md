@@ -246,6 +246,27 @@ because the chart sets that base path for the proxy. A second route in the
 same file, kept from here on:
 
 **Replace `~/repos/personal/kube_local/apps/base/otel-demo/route.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/base/otel-demo/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: otel
+  namespace: otel-demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: ["otel.${CLUSTER_DOMAIN}"]
+  rules:
+    - backendRefs:
+        - name: frontend-proxy
+          port: 8080
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/base/otel-demo/route.yaml
 apiVersion: gateway.networking.k8s.io/v1

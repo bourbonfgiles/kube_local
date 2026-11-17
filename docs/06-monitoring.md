@@ -231,6 +231,36 @@ spec:
 In `cilium-values-base`, since you'd want these on EKS too:
 
 **Replace `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-values-base
+  namespace: kube-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    kubeProxyReplacement: true
+
+    hubble:
+      enabled: true
+      relay:
+        enabled: true
+      ui:
+        enabled: true
+
+    bpf:
+      monitorAggregation: none
+
+    gatewayAPI:
+      enabled: true
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml
 apiVersion: v1
@@ -287,6 +317,32 @@ so `bootstrap.sh` stays in step (lesson 2). And make Cilium wait for the
 CRDs:
 
 **Replace `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: cilium
+      version: 1.20.3
+      sourceRef:
+        kind: HelmRepository
+        name: cilium
+  valuesFrom:
+    - kind: ConfigMap
+      name: cilium-values-base
+    - kind: ConfigMap
+      name: cilium-values-${CLUSTER_NAME}
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2

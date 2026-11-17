@@ -231,6 +231,23 @@ spec:
 Flagger creates the Services, so podinfo's own is off:
 
 **Replace `~/repos/personal/kube_local/apps/base/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-base
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    replicaCount: 2
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/base/podinfo/values.yaml
 apiVersion: v1
@@ -252,6 +269,33 @@ data:
 Drift detection would fight Flagger over replicas, so it ignores them:
 
 **Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 10m
+  driftDetection:
+    mode: enabled
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  valuesFrom:
+    - kind: ConfigMap
+      name: podinfo-values-base
+    - kind: ConfigMap
+      name: podinfo-values-${CLUSTER_NAME}
+  values:
+    image:
+      tag: 6.7.0 # {"$imagepolicy": "podinfo:podinfo:tag"}
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2
@@ -326,6 +370,26 @@ New or changed lines sit between `# ── new ──` and `# ── end new ─
 ### 1. A release
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
@@ -367,6 +431,26 @@ steps, 25 and 50, then promotion. Put 10 back before the faulty release.
 ### 2. A faulty release, with nothing watching
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: release one
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1
@@ -437,6 +521,39 @@ spec:
 ```
 
 **Replace `~/repos/personal/kube_local/apps/base/podinfo/canary.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: podinfo
+  service:
+    port: 9898
+    hosts: ["podinfo.${CLUSTER_DOMAIN}"]
+    gatewayRefs:
+      - name: web
+        namespace: gateway
+  analysis:
+    interval: 30s
+    threshold: 3
+    stepWeight: 10
+    maxWeight: 50
+    webhooks:
+      - name: load
+        url: http://loadtester.podinfo/
+        metadata:
+          cmd: "hey -z 1m -q 10 -c 2 -host podinfo.${CLUSTER_DOMAIN} http://cilium-gateway-web.gateway/"
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/base/podinfo/canary.yaml
 apiVersion: flagger.app/v1beta1
@@ -488,6 +605,28 @@ flux --context k3d-dev reconcile kustomization apps-dev --with-source
 Now the same faulty release:
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: podinfo-values-dev
+  namespace: podinfo
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    ui:
+      message: release two
+    faults:
+      error: true
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/dev/podinfo/values.yaml
 apiVersion: v1

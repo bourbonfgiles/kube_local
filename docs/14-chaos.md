@@ -301,6 +301,31 @@ sofka `T` on a Deployment; k9s `:events otel-demo`.
 ### 1. Flip the switch
 
 **Replace `~/repos/personal/kube_local/clusters/dev/chaos.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/clusters/dev/chaos.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: chaos
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-dev
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./chaos
+  prune: true
+  postBuild:
+    substitute:
+      CHAOS_PAUSED: "true"
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/clusters/dev/chaos.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -328,6 +353,30 @@ spec:
 And every minute rather than five, while you watch:
 
 **Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/chaos/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  schedule: "@every 5m"
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces: [otel-demo]
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/chaos/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -381,6 +430,30 @@ Do these with the switch on, before pausing everything again.
 Back to the install's experiments, paused:
 
 **Replace `~/repos/personal/kube_local/chaos/pod-kill.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/chaos/pod-kill.yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill
+  namespace: chaos
+  annotations:
+    experiment.chaos-mesh.org/pause: "${CHAOS_PAUSED:=true}"
+spec:
+  schedule: "@every 1m"
+  type: PodChaos
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces: [otel-demo]
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/chaos/pod-kill.yaml
 apiVersion: chaos-mesh.org/v1alpha1
@@ -407,6 +480,31 @@ spec:
 ```
 
 **Replace `~/repos/personal/kube_local/clusters/dev/chaos.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/clusters/dev/chaos.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: chaos
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: infra-dev
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./chaos
+  prune: true
+  postBuild:
+    substitute:
+      CHAOS_PAUSED: "false"
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/clusters/dev/chaos.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1

@@ -514,6 +514,30 @@ release name and namespace takes that release over, so Flux owns the CNI.
 | `~/repos/personal/kube_local/infrastructure/dev/cilium/values.yaml` | ConfigMap `cilium-values-dev`: the contents of `~/repos/personal/kube_local/overlays/local/cilium-values.yaml`, plus `k8sServiceHost` |
 
 **Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-base
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/base
+  prune: true
+  postBuild:
+    substitute:
+      CLUSTER_NAME: dev
+      CLUSTER_DOMAIN: kube.internal
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -719,6 +743,28 @@ only checks its own changes.
 ### 2. Turn on drift detection
 
 **Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 10m
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  valuesFrom:
+    - kind: ConfigMap
+      name: podinfo-values-base
+    - kind: ConfigMap
+      name: podinfo-values-${CLUSTER_NAME}
+```
+
+After:
 ```yaml
 # ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
 apiVersion: helm.toolkit.fluxcd.io/v2

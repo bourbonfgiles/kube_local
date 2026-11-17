@@ -195,6 +195,27 @@ between `# ── new ──` and `# ── end new ──`.
 #### 1. Path: `/green` to green, rewritten to `/`
 
 **Replace `~/repos/personal/scratch/01/route.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/scratch/01/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [demo.kube.internal]
+  rules:
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
+```
+
+After:
 ```yaml
 # ~/repos/personal/scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -238,6 +259,40 @@ Without the filter, podinfo gets `/green`, which it doesn't serve.
 #### 2. Header: `x-colour: green` to green
 
 **Replace `~/repos/personal/scratch/01/route.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/scratch/01/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [demo.kube.internal]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /green
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
+```
+
+After:
 ```yaml
 # ~/repos/personal/scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -286,6 +341,47 @@ curl -s -H 'Host: demo.kube.internal' -H 'x-colour: green' http://10.89.0.200/ |
 #### 3. Weights: 90/10 split on the catch-all
 
 **Replace `~/repos/personal/scratch/01/route.yaml`**
+
+Before:
+```yaml
+# ~/repos/personal/scratch/01/route.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: [demo.kube.internal]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /green
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
+    - matches:
+        - headers:
+            - name: x-colour
+              value: green
+      backendRefs:
+        - name: green-podinfo
+          port: 9898
+    - backendRefs:
+        - name: blue-podinfo
+          port: 9898
+```
+
+After:
 ```yaml
 # ~/repos/personal/scratch/01/route.yaml
 apiVersion: gateway.networking.k8s.io/v1

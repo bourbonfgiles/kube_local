@@ -108,9 +108,10 @@ push, and `flux reconcile` rather than wait. `~/repos/personal/scratch` is only
 for lessons 0 and 1 and the odd local check.
 
 **Files.** Every file block is titled **Write `path`** (new) or **Replace
-`path`** (the whole file again, new or changed lines between `# ── new ──` and
-`# ── end new ──`). Both markers are plain comments, so the block still pastes
-as valid YAML. Anything else is labelled **Example only**.
+`path`**. A Replace has two whole-file blocks: **Before**, what the file holds
+now, and **After**, what to paste over it, with new or changed lines between
+`# ── new ──` and `# ── end new ──`. Both markers are plain comments, so the
+block still pastes as valid YAML. Anything else is labelled **Example only**.
 
 **What stays.** podinfo is the example app for lessons 2 to 9, retired at the
 end of lesson 9. Everything else you install is kept.
