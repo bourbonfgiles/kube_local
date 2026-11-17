@@ -16,3 +16,19 @@ spec:
     substitute:
       CLUSTER_NAME: dev
       CLUSTER_DOMAIN: kube.internal
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-dev
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  dependsOn:
+    - name: infra-base
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/dev
+  prune: true

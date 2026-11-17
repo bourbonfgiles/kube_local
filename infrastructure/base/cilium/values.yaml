@@ -1,0 +1,24 @@
+# ~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-values-base
+  namespace: kube-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    kubeProxyReplacement: true
+
+    hubble:
+      enabled: true
+      relay:
+        enabled: true
+      ui:
+        enabled: true
+
+    bpf:
+      monitorAggregation: none
+
+    gatewayAPI:
+      enabled: true
