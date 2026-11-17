@@ -1,6 +1,6 @@
 # Learning path
 
-Fourteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product
+Fifteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product
 through Flux, and every change after that is a commit. The `helm` /
 `kubectl apply` equivalent is shown once, for comparison, never run. You write
 manifests and values, never application code.
@@ -44,6 +44,7 @@ come before Flux, by hand. Lesson 2 is Flux itself. Lesson 0 is a reference for 
 | 12 | [Karpenter](12-karpenter.md) | Karpenter provisioning simulated nodes | 2, 7 |
 | 13 | [Minecraft](13-minecraft.md) | A Java server you can join and profile with BPF | 2 |
 | 14 | [Chaos Mesh](14-chaos.md) | Chaos experiments behind one on/off flag in Git | 10 |
+| 15 | [Pairing with Cilium](15-cilium-pairing.md) (stub) | Encryption between pods, and a mesh if chosen | 1, 6, 9, 10 |
 
 ## Where commands run
 
