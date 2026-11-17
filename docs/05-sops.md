@@ -37,9 +37,9 @@ Operator reading AWS Secrets Manager, so secrets never touch Git at all.
 
 ## Requirements
 
-**In the cluster**: Flux (lesson 2). The hand-made Secrets
-`external-dns/externaldns-tsig` (lesson 3) and `cert-manager/local-ca`
-(lesson 4), if you did those lessons.
+**In the cluster**: lessons 0 to 4 done. This lesson moves their two
+hand-made Secrets into Git: `external-dns/externaldns-tsig` (lesson 3) and
+`cert-manager/local-ca` (lesson 4).
 
 **On your machine**: `sops`, `age` and `age-keygen` (comes with `age`),
 `kubectl`, `flux`, `git`, and `sofka` or `k9s` ([lesson 0](00-tools.md)).

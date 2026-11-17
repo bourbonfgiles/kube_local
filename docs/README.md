@@ -18,20 +18,24 @@ manifests and values, never application code.
 | **Exercises** | Only the ones worth doing, easy first, hardest last. |
 | **Where it gets hard** | The failure modes, and how they show themselves. |
 
+The lessons build one cluster in order: each assumes every lesson before it
+is done, and nothing is optional. The **Uses** column below says which
+earlier lessons it leans on most.
+
 Lesson 1 is the exception: Cilium is the CNI, so it and the first Gateway
 come before Flux, by hand. Lesson 2 is Flux itself. Lesson 0 is a reference for the three tools you look with.
 
 ## Lessons
 
-| # | Lesson | You end up with | Needs |
+| # | Lesson | You end up with | Uses |
 | --- | --- | --- | --- |
 | 0 | [kubectl, sofka and k9s](00-tools.md) | Every check three ways; sofka's troubleshooting views | Platform |
 | 1 | [Cilium and Gateway API](01-cilium.md) | A Gateway and routes, Hubble flows | Platform |
-| 2 | [Flux](02-flux.md) | This repo syncing the cluster; podinfo from Git | 1 |
+| 2 | [Flux](02-flux.md) | This repo syncing the cluster; Cilium and podinfo from Git | 1 |
 | 3 | [ExternalDNS](03-external-dns.md) | Routes get real `*.kube.internal` names | 2 |
 | 4 | [cert-manager](04-cert-manager.md) | HTTPS on the Gateway, trusted by Zen | 3 |
 | 5 | [SOPS](05-sops.md) | Secrets encrypted in Git | 2 |
-| 6 | [Monitoring](06-monitoring.md) | Prometheus, Grafana, Cilium and Hubble metrics | 2, Cilium under Flux |
+| 6 | [Monitoring](06-monitoring.md) | Prometheus, Grafana, Cilium and Hubble metrics | 2 |
 | 7 | [Registry](07-registry.md) | Images mirrored into the local ECR stand-in | 2 |
 | 8 | [Image promotion](08-image-promotion.md) | Flux committing new tags to Git | 7 |
 | 9 | [Flagger](09-flagger.md) | Automated canaries through the Gateway; podinfo retired | 6, 8 |

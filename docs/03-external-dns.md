@@ -30,17 +30,63 @@ BIND here is the local stand-in for a Route53 hosted zone. It starts empty.
 
 ## On EKS
 
-The same chart with `provider.name: aws`, writing to Route53, authenticated
-with an IAM role on its service account (IRSA or Pod Identity) instead of a
-TSIG key. The sources, policy and registry values don't change.
+The same chart, writing to a Route53 hosted zone instead of BIND. What
+changes is the provider and how ExternalDNS proves who it is: an IAM role
+instead of a TSIG key, so there's no Secret in the cluster at all.
+
+The repo is built so that only one file differs between the two clusters.
+`release.yaml` doesn't say which cluster it's on. It reads two ConfigMaps,
+and the second one's name ends in `${CLUSTER_NAME}`, which Flux fills in from
+the cluster's own `clusters/<name>/infrastructure.yaml` ([lesson
+2](02-flux.md#cluster-variables)):
+
+| File | Here (`dev`) | On EKS (`eks`) |
+| --- | --- | --- |
+| `clusters/<name>/infrastructure.yaml` | `CLUSTER_NAME: dev` | `CLUSTER_NAME: eks` |
+| `infrastructure/base/external-dns/release.yaml` | The same file: chart, version, `valuesFrom` | The same file |
+| `infrastructure/base/external-dns/values.yaml` | The same file: sources, policy, registry | The same file |
+| `infrastructure/<name>/external-dns/values.yaml` | `provider: rfc2136`, BIND's address, the TSIG key name and algorithm | `provider: aws`, the zone type, the IAM role |
+| Credentials | Secret `externaldns-tsig`, made by hand below | None in the cluster: an IAM role |
+| `txtOwnerId` | `k3d-dev` | Unique per cluster, so two clusters sharing a zone never delete each other's records |
+
+The EKS file, for comparison:
+
+**Example only: `~/repos/personal/kube_local/infrastructure/eks/external-dns/values.yaml`**
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: external-dns-values-eks
+  namespace: external-dns
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    provider:
+      name: aws
+    txtOwnerId: eks-prod
+    domainFilters: [example.com]
+    extraArgs:
+      - --aws-zone-type=public
+    # IRSA: the pod assumes this role. With Pod Identity, leave this out and
+    # associate the role with the external-dns service account in AWS instead.
+    serviceAccount:
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::111122223333:role/external-dns
+```
+
+The role needs `route53:ChangeResourceRecordSets` on the hosted zone, and
+`route53:ListHostedZones`, `route53:ListResourceRecordSets` and
+`route53:ListTagsForResources`. The listing permissions do the job that
+`--rfc2136-axfr` does here: without them it can't see what it owns, so it
+can't delete anything.
 
 ## Requirements
 
-**In the cluster**
-
-- BIND answering: `dig @10.89.0.250 ns.kube.internal` returns `10.89.0.250`.
-- The Gateway and podinfo's route `podinfo.kube.internal` from lesson 2.
-- Flux (lesson 2).
+**In the cluster**: lessons 0 to 2 done, so Flux syncs this repo, owns
+Cilium, and podinfo answers on its route `podinfo.kube.internal` through the
+Gateway. BIND
+answers: `dig @10.89.0.250 ns.kube.internal` returns `10.89.0.250`.
 
 **On your machine**: `kubectl`, `helm`, `flux`, `dig`, `curl`, and `sofka` or
 `k9s` ([lesson 0](00-tools.md)). The
@@ -59,48 +105,29 @@ file:
 ```sh
 helm --kube-context k3d-dev upgrade --install external-dns external-dns \
   --repo https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0 \
-  -n external-dns -f values-base.yaml -f values-dev.yaml
+  -n external-dns --create-namespace -f values-base.yaml -f values-dev.yaml
 ```
 
 Each values file becomes a ConfigMap below, unchanged, under
 `data.values.yaml`. `helm show values external-dns --repo
-https://kubernetes-sigs.github.io/external-dns/` lists every key.
+https://kubernetes-sigs.github.io/external-dns/ --version 1.23.0` lists every
+key.
 
 ## Install with Flux
-
-### 1. The TSIG secret
-
-ExternalDNS needs the same key BIND has. A Secret can't go in Git in plain
-text, so this stays by hand until lesson 5 encrypts it. Copy it into a new
-namespace:
-
-```sh
-kubectl --context k3d-dev create namespace external-dns
-kubectl --context k3d-dev -n external-dns create secret generic externaldns-tsig \
-  --from-literal=secret="$(kubectl --context k3d-dev -n dns get secret externaldns-tsig \
-    -o jsonpath='{.data.secret}' | base64 -d)"
-kubectl --context k3d-dev -n external-dns get secret externaldns-tsig \
-  -o jsonpath='{.data.secret}' | base64 -d
-```
-
-The last command should print the same key BIND has.
-
-sofka / k9s: `:secrets external-dns`, `x` to decode
-
-### 2. The files
 
 | Kind | Name | File |
 | --- | --- | --- |
 | Namespace | `external-dns` | `~/repos/personal/kube_local/infrastructure/base/external-dns/namespace.yaml` |
+| Secret | `externaldns-tsig` | By hand; lesson 5 puts it in Git encrypted |
 | HelmRepository | `external-dns` | `~/repos/personal/kube_local/infrastructure/base/external-dns/source.yaml` |
 | HelmRelease | `external-dns` | `~/repos/personal/kube_local/infrastructure/base/external-dns/release.yaml` |
 | ConfigMap | `external-dns-values-base` | `~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml` |
 | ConfigMap | `external-dns-values-dev` | `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml` |
-| Secret | `externaldns-tsig` | By hand, above; lesson 5 puts it in Git encrypted |
 
-This chart comes from a classic Helm repository, so the release uses
-`chart.spec` with a `HelmRepository`, where podinfo used `chartRef` with an
-`OCIRepository`.
+### 1. The namespace
+
+The Secret in step 2 needs a namespace to go in, and the namespace comes
+from Git like everything else.
 
 ```sh
 mkdir -p ~/repos/personal/kube_local/infrastructure/base/external-dns ~/repos/personal/kube_local/infrastructure/dev/external-dns
@@ -115,6 +142,40 @@ metadata:
   name: external-dns
 ```
 
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/base/external-dns/namespace.yaml
+git -C ~/repos/personal/kube_local commit -m "ExternalDNS namespace"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization infra-base --with-source
+kubectl --context k3d-dev get namespace external-dns
+```
+
+sofka / k9s: `:namespaces`
+
+### 2. The TSIG secret
+
+ExternalDNS needs the same key BIND has. A Secret can't go in Git in plain
+text, so this one is made by hand until lesson 5 encrypts it. Copy it across
+from BIND's namespace:
+
+```sh
+kubectl --context k3d-dev -n external-dns create secret generic externaldns-tsig \
+  --from-literal=secret="$(kubectl --context k3d-dev -n dns get secret externaldns-tsig \
+    -o jsonpath='{.data.secret}' | base64 -d)"
+kubectl --context k3d-dev -n external-dns get secret externaldns-tsig \
+  -o jsonpath='{.data.secret}' | base64 -d
+```
+
+The last command should print the same key BIND has.
+
+sofka / k9s: `:secrets external-dns`, `x` to decode
+
+### 3. The chart and its values
+
+This chart comes from a classic Helm repository, so the release uses
+`chart.spec` with a `HelmRepository`, where podinfo used `chartRef` with an
+`OCIRepository`.
+
 **Write `~/repos/personal/kube_local/infrastructure/base/external-dns/source.yaml`**
 ```yaml
 # ~/repos/personal/kube_local/infrastructure/base/external-dns/source.yaml
@@ -127,6 +188,12 @@ spec:
   interval: 1h
   url: https://kubernetes-sigs.github.io/external-dns/
 ```
+
+The release is the part every cluster shares. `valuesFrom` is the `-f` list
+from the helm command: the base ConfigMap first, then the cluster's, and
+later keys win. `${CLUSTER_NAME}` is `dev` here, so it reads
+`external-dns-values-dev`; on EKS the same line reads
+`external-dns-values-eks`.
 
 **Write `~/repos/personal/kube_local/infrastructure/base/external-dns/release.yaml`**
 ```yaml
@@ -152,7 +219,8 @@ spec:
       name: external-dns-values-${CLUSTER_NAME}
 ```
 
-What you'd keep on EKS:
+The base values: which objects to read, whether to delete, and how to mark
+ownership. None of it depends on the provider.
 
 **Write `~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml`**
 ```yaml
@@ -171,7 +239,8 @@ data:
     registry: txt
 ```
 
-What's local: BIND as the provider, and the key.
+The dev values: BIND as the provider, how to reach it, and the key from
+step 2, passed in as an environment variable.
 
 **Write `~/repos/personal/kube_local/infrastructure/dev/external-dns/values.yaml`**
 ```yaml
@@ -204,61 +273,21 @@ data:
             key: secret
 ```
 
-If you didn't adopt Cilium in lesson 2, this is the first file under
-`~/repos/personal/kube_local/infrastructure/dev/`, so add `infra-dev` in the same commit. If you did,
-the file already looks like this:
+`infra-dev`, from lesson 2, applies this folder after `infra-base`, so the
+namespace and release exist before the dev ConfigMap lands.
 
-**Replace `~/repos/personal/kube_local/clusters/dev/infrastructure.yaml`**
-```yaml
-# ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: infra-base
-  namespace: flux-system
-spec:
-  interval: 10m
-  retryInterval: 1m
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./infrastructure/base
-  prune: true
-  postBuild:
-    substitute:
-      CLUSTER_NAME: dev
-      CLUSTER_DOMAIN: kube.internal
-# ── new ──
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: infra-dev
-  namespace: flux-system
-spec:
-  interval: 10m
-  retryInterval: 1m
-  dependsOn:
-    - name: infra-base
-  sourceRef:
-    kind: GitRepository
-    name: flux-system
-  path: ./infrastructure/dev
-  prune: true
-# ── end new ──
-```
-
-### 3. Push and check
+### 4. Push and check
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/ ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/
 git -C ~/repos/personal/kube_local commit -m "ExternalDNS with Flux"
 git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
 kubectl --context k3d-dev get helmreleases -n external-dns -w
 ```
 
-sofka / k9s: `:helmreleases external-dns`
+The HelmRelease reports `external-dns-values-dev` missing until `infra-dev`
+has applied it, then installs. sofka / k9s: `:helmreleases external-dns`
 
 ```sh
 kubectl --context k3d-dev -n external-dns logs deploy/external-dns -f
@@ -326,4 +355,5 @@ Each row is one commit, then its revert. What happens is the point; try any you 
 ## Links
 
 - <https://kubernetes-sigs.github.io/external-dns/latest/docs/tutorials/rfc2136/>
+- <https://kubernetes-sigs.github.io/external-dns/latest/docs/tutorials/aws/>
 - <https://kubernetes-sigs.github.io/external-dns/latest/docs/sources/gateway-api/>

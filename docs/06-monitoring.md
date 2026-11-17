@@ -46,8 +46,8 @@ exposes.
 
 ## Requirements
 
-**In the cluster**: Flux, with Cilium adopted (end of lesson 2), since
-Cilium's metrics are turned on through its values. Roughly 2 GB of spare
+**In the cluster**: lessons 0 to 5 done. Cilium's metrics are turned on
+through the HelmRelease lesson 2 handed to Flux. Roughly 2 GB of spare
 memory.
 
 **On your machine**: `kubectl`, `helm`, `flux`, `hubble`, and `sofka`

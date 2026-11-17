@@ -54,12 +54,7 @@ exercises 2 to 4 mirror.
   `--components-extra image-reflector-controller,image-automation-controller`
   and `--read-write-key` (lesson 2).
   `kubectl --context k3d-dev get deploy -n flux-system` lists both image
-  controllers. If they're missing, a read-only deploy key can't be
-  upgraded in place:
-  ```sh
-  kubectl --context k3d-dev -n flux-system delete secret flux-system
-  ```
-  then rerun lesson 2's bootstrap command with both flags.
+  controllers.
 - podinfo `6.7.0` running from the local registry (lesson 7).
 
 **On your machine**: `skopeo`, `flux`, `kubectl`, `git`, and `sofka`

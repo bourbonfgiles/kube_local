@@ -494,90 +494,13 @@ layers.
    with `podinfo.kube.internal` substituted in. sofka / k9s:
    `:helmreleases all`.
 
-## Iterate
+### Hand Cilium to Flux
 
-Every change is a commit. New and changed lines sit between `# ── new ──` and
-`# ── end new ──`. Reconciling by hand only skips the 1m poll of Git; Flux
-applies a push on its own.
-
-### 1. Helm drift: Flux doesn't notice by default
-
-The one behaviour that surprises Argo CD users. No file change:
-
-```sh
-kubectl --context k3d-dev -n podinfo delete service podinfo
-kubectl --context k3d-dev -n podinfo get service podinfo
-```
-
-It stays gone, and `curl` through the Gateway fails: by default helm-controller
-only checks its own changes.
-
-### 2. Turn on drift detection
-
-**Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
-```yaml
-# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: podinfo
-  namespace: podinfo
-spec:
-  interval: 10m
-  # ── new ──
-  driftDetection:
-    mode: enabled
-  # ── end new ──
-  chartRef:
-    kind: OCIRepository
-    name: podinfo
-  valuesFrom:
-    - kind: ConfigMap
-      name: podinfo-values-base
-    - kind: ConfigMap
-      name: podinfo-values-${CLUSTER_NAME}
-```
-
-```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
-git -C ~/repos/personal/kube_local commit -m "podinfo: drift detection"
-git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization apps-base --with-source
-kubectl --context k3d-dev -n podinfo get service podinfo
-```
-
-The Service is back: helm-controller now compares the cluster with the release
-and corrects it. Delete it again, then reconcile the HelmRelease rather than
-wait the 10m interval:
-
-```sh
-kubectl --context k3d-dev -n podinfo delete service podinfo
-flux --context k3d-dev reconcile helmrelease podinfo -n podinfo
-kubectl --context k3d-dev -n podinfo get service podinfo
-```
-
-Drift detection stays on from here; later lessons expect it.
-
-### Asking Flux what it did
-
-| Question | Command | sofka / k9s |
-| --- | --- | --- |
-| Where did this object come from? | `flux --context k3d-dev trace -n podinfo deployment podinfo` | sofka `:gitops` on it; k9s `Shift-q` (plugin) |
-| What does a Kustomization own? | `flux --context k3d-dev tree kustomization apps-base` | |
-| What would this push change? | `flux --context k3d-dev diff kustomization apps-base --path ~/repos/personal/kube_local/apps/base` | |
-| What happened, in order? | `flux --context k3d-dev events -A` | `:events flux-system` |
-| Which Helm revision is live? | `helm --kube-context k3d-dev history podinfo -n podinfo` | sofka `⏎` on the HelmRelease; k9s `:helm` |
-| Why isn't it Ready? | `flux --context k3d-dev get all -A --status-selector ready=false` | sofka `ctrl-z`, then `X` |
-
-Undo is `git -C ~/repos/personal/kube_local revert`, pushed: each revert is a
-new Helm revision, not a Helm rollback.
-
-## Exercises
-
-One, and later lessons depend on it: lesson 6 changes Cilium's values through
-Flux.
-
-### Adopt Cilium
+The Gateway you just put in Git names `gatewayClassName: cilium`: Cilium is
+the CNI and the Gateway API implementation every route goes through. A repo
+that holds the Gateway but not Cilium can't rebuild a working cluster, and
+later lessons change Cilium's values through Git (Hubble metrics in lesson 6).
+So Cilium goes in Git now, before the lessons that build on it.
 
 `bootstrap.sh` installed Cilium with `helm`. A HelmRelease with the same
 release name and namespace takes that release over, so Flux owns the CNI.
@@ -744,10 +667,17 @@ The ConfigMaps hold `~/repos/personal/kube_local/cilium/values.yaml` and
    ```sh
    helm --kube-context k3d-dev get values cilium -n kube-system
    ```
-2. Push. `kubectl --context k3d-dev get helmreleases -n kube-system -w`:
-   `cilium` upgrades to the same values,
-   and `helm --kube-context k3d-dev history cilium -n kube-system` shows a new
-   revision.
+2. Commit, push and reconcile:
+   ```sh
+   git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/clusters/dev/infrastructure.yaml ~/repos/personal/kube_local/infrastructure/
+   git -C ~/repos/personal/kube_local commit -m "Cilium under Flux"
+   git -C ~/repos/personal/kube_local push
+   flux --context k3d-dev reconcile kustomization flux-system --with-source
+   kubectl --context k3d-dev get helmreleases -n kube-system -w
+   ```
+   `cilium` upgrades to the same values, and
+   `helm --kube-context k3d-dev history cilium -n kube-system` shows a new
+   revision. sofka / k9s: `:helmreleases kube-system`
 3. From now on the ConfigMaps are the truth. `bootstrap.sh` still installs
    Cilium from the original two files on a fresh cluster, before Flux exists,
    so keep them identical.
@@ -767,6 +697,84 @@ The ConfigMaps hold `~/repos/personal/kube_local/cilium/values.yaml` and
 > flux --context k3d-dev resume helmrelease cilium -n kube-system
 > kubectl --context k3d-dev get helmreleases -n kube-system -w
 > ```
+
+## Iterate
+
+Every change is a commit. New and changed lines sit between `# ── new ──` and
+`# ── end new ──`. Reconciling by hand only skips the 1m poll of Git; Flux
+applies a push on its own.
+
+### 1. Helm drift: Flux doesn't notice by default
+
+The one behaviour that surprises Argo CD users. No file change:
+
+```sh
+kubectl --context k3d-dev -n podinfo delete service podinfo
+kubectl --context k3d-dev -n podinfo get service podinfo
+```
+
+It stays gone, and `curl` through the Gateway fails: by default helm-controller
+only checks its own changes.
+
+### 2. Turn on drift detection
+
+**Replace `~/repos/personal/kube_local/apps/base/podinfo/release.yaml`**
+```yaml
+# ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  interval: 10m
+  # ── new ──
+  driftDetection:
+    mode: enabled
+  # ── end new ──
+  chartRef:
+    kind: OCIRepository
+    name: podinfo
+  valuesFrom:
+    - kind: ConfigMap
+      name: podinfo-values-base
+    - kind: ConfigMap
+      name: podinfo-values-${CLUSTER_NAME}
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/apps/base/podinfo/release.yaml
+git -C ~/repos/personal/kube_local commit -m "podinfo: drift detection"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization apps-base --with-source
+kubectl --context k3d-dev -n podinfo get service podinfo
+```
+
+The Service is back: helm-controller now compares the cluster with the release
+and corrects it. Delete it again, then reconcile the HelmRelease rather than
+wait the 10m interval:
+
+```sh
+kubectl --context k3d-dev -n podinfo delete service podinfo
+flux --context k3d-dev reconcile helmrelease podinfo -n podinfo
+kubectl --context k3d-dev -n podinfo get service podinfo
+```
+
+Drift detection stays on from here; later lessons expect it.
+
+### Asking Flux what it did
+
+| Question | Command | sofka / k9s |
+| --- | --- | --- |
+| Where did this object come from? | `flux --context k3d-dev trace -n podinfo deployment podinfo` | sofka `:gitops` on it; k9s `Shift-q` (plugin) |
+| What does a Kustomization own? | `flux --context k3d-dev tree kustomization apps-base` | |
+| What would this push change? | `flux --context k3d-dev diff kustomization apps-base --path ~/repos/personal/kube_local/apps/base` | |
+| What happened, in order? | `flux --context k3d-dev events -A` | `:events flux-system` |
+| Which Helm revision is live? | `helm --kube-context k3d-dev history podinfo -n podinfo` | sofka `⏎` on the HelmRelease; k9s `:helm` |
+| Why isn't it Ready? | `flux --context k3d-dev get all -A --status-selector ready=false` | sofka `ctrl-z`, then `X` |
+
+Undo is `git -C ~/repos/personal/kube_local revert`, pushed: each revert is a
+new Helm revision, not a Helm rollback.
 
 ## Where it gets hard
 
