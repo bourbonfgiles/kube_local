@@ -1,0 +1,5 @@
+# ~/repos/personal/kube_local/infrastructure/base/external-dns/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-dns

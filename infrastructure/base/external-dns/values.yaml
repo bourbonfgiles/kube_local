@@ -1,0 +1,13 @@
+# ~/repos/personal/kube_local/infrastructure/base/external-dns/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: external-dns-values-base
+  namespace: external-dns
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    sources: [service, gateway-httproute, gateway-grpcroute]
+    policy: sync
+    registry: txt
