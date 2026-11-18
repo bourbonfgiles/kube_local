@@ -1,4 +1,4 @@
-# 13. Minecraft (Java)
+# 14. Minecraft (Java)
 
 > You end up with: a Minecraft server you and friends can join, and a flame
 > graph of what its JVM spends time on, taken with BPF from the host.

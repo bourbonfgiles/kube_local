@@ -1,4 +1,4 @@
-# 9. Progressive delivery with Flagger
+# 10. Progressive delivery with Flagger
 
 > You end up with: a new podinfo version taking 10%, then 20%... of traffic
 > through the Gateway, promoted if healthy and rolled back if not. With lesson
@@ -46,9 +46,9 @@ Load Balancer Controller). Argo Rollouts is the Argo-world equivalent.
 
 ## Requirements
 
-**In the cluster**: the Gateway (lesson 2), Prometheus from lesson 6 with
+**In the cluster**: the Gateway (lesson 2), Prometheus from lesson 7 with
 Hubble's `httpV2` metrics, and podinfo from the local registry with image
-automation (lessons 7 and 8).
+automation (lessons 8 and 9).
 
 **On your machine**: `kubectl`, `helm`, `flux`, `curl`, and `sofka`
 or `k9s` ([lesson 0](00-tools.md)).
@@ -75,7 +75,7 @@ helm --kube-context k3d-dev upgrade podinfo oci://ghcr.io/stefanprodan/charts/po
 
 ## Install with Flux
 
-For the real podinfo, so lesson 8's commits become canaries.
+For the real podinfo, so lesson 9's commits become canaries.
 
 | Kind | Name | File |
 | --- | --- | --- |
@@ -498,7 +498,7 @@ Wait for `Succeeded`.
 
 A MetricTemplate using Hubble's HTTP metrics. `destination_workload` and
 `destination_namespace` only exist with the `labelsContext` option from lesson
-6. It counts the canary's share of traffic: Flagger's canary pods run as
+7. It counts the canary's share of traffic: Flagger's canary pods run as
 Deployment `podinfo`, primary as `podinfo-primary`. Run the query in
 Prometheus first.
 
@@ -680,7 +680,7 @@ sofka / k9s: `d` on the Canary; `:pods flagger-system`, `l`.
 
 ## Exercises
 
-1. Mirror a new tag (lesson 8 commits it) and watch the whole chain: commit,
+1. Mirror a new tag (lesson 9 commits it) and watch the whole chain: commit,
    HelmRelease upgrade, canary analysis, promotion.
 2. Add a latency check from `hubble_http_request_duration_seconds`.
 3. Harder: replace the weighted rollout with header-based A/B testing
@@ -689,7 +689,7 @@ sofka / k9s: `d` on the Canary; `:pods flagger-system`, `l`.
 
 ## Retire podinfo
 
-podinfo was the example workload for lessons 2 to 9; nothing after this needs
+podinfo was the example workload for lessons 2 to 10; nothing after this needs
 it. Flagger stays, and so do the app layers, for the next apps. Git can't hold
 an empty folder, so each keeps a `.gitkeep`:
 

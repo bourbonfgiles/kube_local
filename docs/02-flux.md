@@ -16,8 +16,8 @@ resources:
 | kustomize-controller | `Kustomization` | Applies every manifest under a path in an artifact, deletes what was removed (`prune`), reports health |
 | helm-controller | `HelmRelease` | Installs and upgrades a chart with given values, the way `helm upgrade --install` would |
 | notification-controller | `Provider`, `Alert`, `Receiver` | Sends events out (Slack, Discord), takes webhooks in |
-| image-reflector-controller | `ImageRepository`, `ImagePolicy` | Scans a registry's tags and picks one (lesson 8) |
-| image-automation-controller | `ImageUpdateAutomation` | Commits the picked tag back to Git (lesson 8) |
+| image-reflector-controller | `ImageRepository`, `ImagePolicy` | Scans a registry's tags and picks one (lesson 9) |
+| image-automation-controller | `ImageUpdateAutomation` | Commits the picked tag back to Git (lesson 9) |
 
 ```mermaid
 flowchart LR
@@ -165,8 +165,8 @@ flux bootstrap github --context k3d-dev \
 | Flag | Why |
 | --- | --- |
 | `--path clusters/dev` | Flux applies everything under this folder. It's the entry point. Relative to the repo root, not a local path. |
-| `--components-extra ...` | The image controllers for lesson 8. Adding them later means bootstrapping again. |
-| `--read-write-key` | The deploy key can push, also for lesson 8. A read-only key isn't upgraded in place. |
+| `--components-extra ...` | The image controllers for lesson 9. Adding them later means bootstrapping again, until lesson 6 makes them a list in Git. |
+| `--read-write-key` | The deploy key can push, also for lesson 9. A read-only key isn't upgraded in place. |
 
 Then drop the token and fetch bootstrap's commit:
 
@@ -499,7 +499,7 @@ layers.
 The Gateway you just put in Git names `gatewayClassName: cilium`: Cilium is
 the CNI and the Gateway API implementation every route goes through. A repo
 that holds the Gateway but not Cilium can't rebuild a working cluster, and
-later lessons change Cilium's values through Git (Hubble metrics in lesson 6).
+later lessons change Cilium's values through Git (Hubble metrics in lesson 7).
 So Cilium goes in Git now, before the lessons that build on it.
 
 `bootstrap.sh` installed Cilium with `helm`. A HelmRelease with the same
@@ -831,7 +831,7 @@ new Helm revision, not a Helm rollback.
   chart fails until the chart is installed. If something the chart needs is in
   the same Kustomization, they wait on each other forever. Lesson 4 gives such
   objects their own layer.
-- Flux commits to the repo (bootstrap now, image automation in lesson 8).
+- Flux commits to the repo (bootstrap now, image automation in lesson 9).
   `git -C ~/repos/personal/kube_local pull` before you commit.
 
 ## Coming from Argo CD
@@ -845,8 +845,8 @@ new Helm revision, not a Helm rollback.
 | Self-heal | Default for manifests, at `interval`; `driftDetection` for HelmReleases |
 | Disable auto-sync | `suspend: true` in Git, or `flux suspend` (itself drift Flux won't revert) |
 | UI diff | `flux diff kustomization` |
-| Argo Rollouts | Flagger (lesson 9) |
-| Argo CD Image Updater | Image automation controllers (lesson 8) |
+| Argo Rollouts | Flagger (lesson 10) |
+| Argo CD Image Updater | Image automation controllers (lesson 9) |
 
 How they behave differently:
 

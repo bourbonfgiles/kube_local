@@ -1,4 +1,4 @@
-# 7. The registry (ECR stand-in)
+# 8. The registry (ECR stand-in)
 
 > You end up with: upstream images mirrored into the local registry, podinfo
 > pulling from it, and a clear picture of tags versus digests.
@@ -305,12 +305,12 @@ kubectl --context k3d-dev -n podinfo get pods
 ## Exercises
 
 1. Mirror an image you'll need later (`registry.k8s.io/pause:3.10` for lesson
-   12).
+   13).
 2. Find a multi-arch image's manifest list:
    `skopeo inspect --raw docker://localhost:5050/podinfo:6.7.1 | jq`.
 3. Harder: run Zot as a HelmRelease (built-in auth, RBAC, scanning) as a
    second, ECR-like registry. Pods then need an `imagePullSecret`, and Flux's
-   ImageRepository a `secretRef` in lesson 8.
+   ImageRepository a `secretRef` in lesson 9.
 
 ## Where it gets hard
 
@@ -321,7 +321,7 @@ kubectl --context k3d-dev -n podinfo get pods
   containerd and Flux resolve it normally.
 - Plain HTTP means `--tls-verify=false` for skopeo and `insecure: true` for
   Flux.
-- Without tag immutability, semver promotion (lesson 8) trusts that tags never
+- Without tag immutability, semver promotion (lesson 9) trusts that tags never
   change, and nothing here enforces it.
 
 ## Links

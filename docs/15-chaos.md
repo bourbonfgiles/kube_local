@@ -1,4 +1,4 @@
-# 14. Chaos Mesh with an on/off switch
+# 15. Chaos Mesh with an on/off switch
 
 > You end up with: scheduled experiments that kill pods, add latency and burn
 > CPU in the shop, all switched on and off by one value in Git.
@@ -41,7 +41,7 @@ containerd at its default socket, so the k3s socket setting below goes away.
 ## Requirements
 
 **In the cluster**: Flux (lesson 2) and something worth breaking: the
-OpenTelemetry Demo (lesson 10) shows failures clearly in Jaeger and Grafana.
+OpenTelemetry Demo (lesson 11) shows failures clearly in Jaeger and Grafana.
 
 **On your machine**: `kubectl`, `helm`, `flux`, `git`, and `sofka`
 or `k9s` ([lesson 0](00-tools.md)).

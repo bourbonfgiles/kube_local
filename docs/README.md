@@ -1,6 +1,6 @@
 # Learning path
 
-Fifteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product
+Sixteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product
 through Flux, and every change after that is a commit. The `helm` /
 `kubectl apply` equivalent is shown once, for comparison, never run. You write
 manifests and values, never application code.
@@ -35,16 +35,17 @@ come before Flux, by hand. Lesson 2 is Flux itself. Lesson 0 is a reference for 
 | 3 | [ExternalDNS](03-external-dns.md) | Routes get real `*.kube.internal` names | 2 |
 | 4 | [cert-manager](04-cert-manager.md) | HTTPS on the Gateway, trusted by Zen | 3 |
 | 5 | [SOPS](05-sops.md) | Secrets encrypted in Git | 2 |
-| 6 | [Monitoring](06-monitoring.md) | Prometheus, Grafana, Cilium and Hubble metrics | 2 |
-| 7 | [Registry](07-registry.md) | Images mirrored into the local ECR stand-in | 2 |
-| 8 | [Image promotion](08-image-promotion.md) | Flux committing new tags to Git | 7 |
-| 9 | [Flagger](09-flagger.md) | Automated canaries through the Gateway; podinfo retired | 6, 8 |
-| 10 | [OpenTelemetry Demo](10-otel-demo.md) | A 20-service shop with traces and Kafka | 3 |
-| 11 | [KEDA](11-keda.md) | The shop's Kafka consumer scaled on lag | 10 |
-| 12 | [Karpenter](12-karpenter.md) | Karpenter provisioning simulated nodes | 2, 7 |
-| 13 | [Minecraft](13-minecraft.md) | A Java server you can join and profile with BPF | 2 |
-| 14 | [Chaos Mesh](14-chaos.md) | Chaos experiments behind one on/off flag in Git | 10 |
-| 15 | [Pairing with Cilium](15-cilium-pairing.md) (stub) | Encryption between pods, and a mesh if chosen | 1, 6, 9, 10 |
+| 6 | [Flux Operator](06-flux-operator.md) | Flux run by Flux Operator; the Flux Web UI at `flux.kube.internal` | 2, 3, 4 |
+| 7 | [Monitoring](07-monitoring.md) | Prometheus, Grafana, Cilium and Hubble metrics | 2 |
+| 8 | [Registry](08-registry.md) | Images mirrored into the local ECR stand-in | 2 |
+| 9 | [Image promotion](09-image-promotion.md) | Flux committing new tags to Git | 8 |
+| 10 | [Flagger](10-flagger.md) | Automated canaries through the Gateway; podinfo retired | 7, 9 |
+| 11 | [OpenTelemetry Demo](11-otel-demo.md) | A 20-service shop with traces and Kafka | 3 |
+| 12 | [KEDA](12-keda.md) | The shop's Kafka consumer scaled on lag | 11 |
+| 13 | [Karpenter](13-karpenter.md) | Karpenter provisioning simulated nodes | 2, 8 |
+| 14 | [Minecraft](14-minecraft.md) | A Java server you can join and profile with BPF | 2 |
+| 15 | [Chaos Mesh](15-chaos.md) | Chaos experiments behind one on/off flag in Git | 11 |
+| 16 | [Pairing with Cilium](16-cilium-pairing.md) (stub) | Encryption between pods, and a mesh if chosen | 1, 7, 10, 11 |
 
 ## Where commands run
 
@@ -61,7 +62,7 @@ Everything lives side by side in `~/repos/personal`:
 | `~/repos/personal/dotfiles` | The machine and the CNI-less cluster |
 | `~/repos/personal/kube_local` | This repo: the platform, the lessons, and everything Flux applies |
 | `~/repos/personal/scratch` | Not a repo. Lessons 0 and 1 and the odd local check |
-| `~/repos/personal/karpenter`, `~/repos/personal/FlameGraph` | Clones for lessons 12 and 13 |
+| `~/repos/personal/karpenter`, `~/repos/personal/FlameGraph` | Clones for lessons 13 and 14 |
 
 Every command names the cluster, so a work context can never be hit by
 mistake:
@@ -86,17 +87,17 @@ lesson lists the ones it needs.
 | Tool | Lessons | Comes from |
 | --- | --- | --- |
 | `kubectl`, `helm`, `sofka`, `k9s` | All | dotfiles brewfile |
-| `cilium`, `hubble` | 1, 6 | dotfiles brewfile |
+| `cilium`, `hubble` | 1, 6, 7 | dotfiles brewfile |
 | `flux` | 2 onwards | dotfiles brewfile (`fluxcd/tap`) |
 | `git`, `curl`, `jq` | All | dotfiles brewfile |
 | `dig` | 3 | Bazzite base image |
 | `mkcert` | 4 | dotfiles brewfile |
 | `/usr/bin/trust` | 4 | Bazzite base image (brew's `trust` is a different tool) |
 | `sops`, `age`, `age-keygen` | 5 | dotfiles brewfile (`age-keygen` comes with `age`) |
-| `skopeo` | 7, 8 | Bazzite base image |
-| `go`, `ko`, `kwok`, `make` | 12 | dotfiles brewfile; `make` from the base image |
-| `bpftrace`, BCC tools, `bpftool`, `perf` | 13 | os_build image |
-| Minecraft Java client | 13 | Not provided |
+| `skopeo` | 8, 9 | Bazzite base image |
+| `go`, `ko`, `kwok`, `make` | 13 | dotfiles brewfile; `make` from the base image |
+| `bpftrace`, BCC tools, `bpftool`, `perf` | 14 | os_build image |
+| Minecraft Java client | 14 | Not provided |
 
 Check with `command -v <tool>`. If one's missing, add it to the dotfiles brewfile
 and run `chezmoi apply` rather than installing it by hand.
@@ -114,8 +115,8 @@ now, and **After**, what to paste over it, with new or changed lines between
 `# ── new ──` and `# ── end new ──`. Both markers are plain comments, so the
 block still pastes as valid YAML. Anything else is labelled **Example only**.
 
-**What stays.** podinfo is the example app for lessons 2 to 9, retired at the
-end of lesson 9. Everything else you install is kept.
+**What stays.** podinfo is the example app for lessons 2 to 10, retired at the
+end of lesson 10. Everything else you install is kept.
 
 **With Flux.** The same objects as files in the repo, in the layout lesson 2
 sets up:
@@ -184,6 +185,6 @@ Each is one or two charts and a clear thing to learn.
 | Security | **Network policy hardening**: default-deny a namespace, then allow only what Hubble shows is needed. |
 | AWS stand-ins | **MinIO** as S3, then **Velero** backing up namespaces to it and restoring into a rebuilt cluster. |
 | AWS stand-ins | **CloudNativePG** as RDS: a Postgres cluster, failover, backups to MinIO. |
-| Observability | **Loki and Alloy**: logs next to the metrics from lesson 6. |
+| Observability | **Loki and Alloy**: logs next to the metrics from lesson 7. |
 | Resilience | **PodDisruptionBudgets and topology spread**: drain nodes and see what survives. The agents carry zone labels for this. |
 | Resilience | **VPA with Goldilocks**: requests and limits recommended from real usage. |

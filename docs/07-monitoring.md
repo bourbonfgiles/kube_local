@@ -1,4 +1,4 @@
-# 6. Monitoring
+# 7. Monitoring
 
 > You end up with: Prometheus scraping the cluster, Cilium and Hubble, and
 > Grafana at `grafana.kube.internal` with the network as graphs as well as
@@ -46,7 +46,7 @@ exposes.
 
 ## Requirements
 
-**In the cluster**: lessons 0 to 5 done. Cilium's metrics are turned on
+**In the cluster**: lessons 0 to 6 done. Cilium's metrics are turned on
 through the HelmRelease lesson 2 handed to Flux. Roughly 2 GB of spare
 memory.
 
@@ -312,7 +312,7 @@ data:
 ```
 
 `labelsContext` adds who-talked-to-whom labels to the HTTP metrics; lesson
-9's canary checks need them. `~/repos/personal/kube_local/cilium/values.yaml` gets the same new lines,
+10's canary checks need them. `~/repos/personal/kube_local/cilium/values.yaml` gets the same new lines,
 so `bootstrap.sh` stays in step (lesson 2). And make Cilium wait for the
 CRDs:
 
@@ -405,7 +405,7 @@ k9s `Shift-f`); `:pf` lists running forwards. The password:
 ### 6. Your own ServiceMonitor
 
 podinfo serves Prometheus metrics on its HTTP port. Scrape it. It goes with
-podinfo, so it leaves with podinfo in lesson 9:
+podinfo, so it leaves with podinfo in lesson 10:
 
 **Write `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml`**
 ```yaml

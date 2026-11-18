@@ -1,4 +1,4 @@
-# 10. OpenTelemetry Demo (microservices)
+# 11. OpenTelemetry Demo (microservices)
 
 > You end up with: a 20-service shop at `otel.kube.internal`, every request
 > traceable from the browser through gRPC calls and a Kafka hop, and the same
@@ -325,9 +325,9 @@ then remove it for the chart's 5.
 
 1. Take one page load and explain every service it touched, from the trace
    and from Hubble.
-2. Turn on `kafkaQueueProblems` and find the lag in Grafana. Lesson 11 builds
+2. Turn on `kafkaQueueProblems` and find the lag in Grafana. Lesson 12 builds
    on this.
-3. Once lesson 6 is in: turn off the bundled Prometheus and Grafana in base
+3. Once lesson 7 is in: turn off the bundled Prometheus and Grafana in base
    values and point the collector at yours.
 4. Harder: lock the namespace down with CiliumNetworkPolicies, one service at a
    time, using Hubble to see what each one needs. Allow the `ingress` entity
@@ -344,7 +344,7 @@ then remove it for the chart's 5.
   `kubectl --context k3d-dev top nodes`. That's usage, but the scheduler places
   pods by requests: sofka's `:nodes` ([lesson 0](00-tools.md)) has `%CPU/R` and `%MEM/R`, the share of
   each node that pods have already asked for.
-- The Kafka consumers lag when the load generator is busy. That's lesson 11.
+- The Kafka consumers lag when the load generator is busy. That's lesson 12.
 
 ## Links
 

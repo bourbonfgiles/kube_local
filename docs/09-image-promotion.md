@@ -1,4 +1,4 @@
-# 8. Image promotion with Git writeback
+# 9. Image promotion with Git writeback
 
 > You end up with: mirroring a tag is the only thing you do by hand. Flux
 > notices it, commits the new tag to this repo, and rolls it out.
@@ -50,12 +50,11 @@ exercises 2 to 4 mirror.
 
 **In the cluster**
 
-- Flux bootstrapped with
-  `--components-extra image-reflector-controller,image-automation-controller`
-  and `--read-write-key` (lesson 2).
+- Both image controllers in the `FluxInstance`'s `components` (lesson 6),
+  and the deploy key with write access from lesson 2's `--read-write-key`.
   `kubectl --context k3d-dev get deploy -n flux-system` lists both image
   controllers.
-- podinfo `6.7.0` running from the local registry (lesson 7).
+- podinfo `6.7.0` running from the local registry (lesson 8).
 
 **On your machine**: `skopeo`, `flux`, `kubectl`, `git`, and `sofka`
 or `k9s` ([lesson 0](00-tools.md)).
@@ -253,7 +252,7 @@ flux --context k3d-dev reconcile kustomization flux-system --with-source
 flux --context k3d-dev get images all -n podinfo
 ```
 
-The tags it found, and the pick: `6.7.1`, which lesson 7 mirrored. Within the
+The tags it found, and the pick: `6.7.1`, which lesson 8 mirrored. Within the
 automation's interval Flux commits it:
 
 ```sh
