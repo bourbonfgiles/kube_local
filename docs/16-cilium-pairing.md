@@ -1,4 +1,4 @@
-# 15. What to pair with Cilium (stub)
+# 16. What to pair with Cilium (stub)
 
 > [!NOTE]
 > A stub. It lays out the options and what each costs in this cluster. Pick
@@ -81,9 +81,9 @@ Combinations worth naming:
 | Cilium values (`infrastructure/base/cilium/values.yaml`) | `encryption.*` | `authentication.mutual.*` | `envoy.*`, GAMMA | `socketLB.hostNamespaceOnly: true`, `cni.exclusive: false` | `cni.exclusive: false` |
 | Rebuild (`kube-delete` / `kube-create`) | No. Every Cilium agent restarts: a short traffic drop | No | No | No | No |
 | New charts | None | SPIRE (Cilium's chart) | None | `base`, `istiod`, `istio-cni`, `ztunnel` | Istio or Linkerd charts |
-| Hubble L7 and `httpV2` metrics (lessons 6, 9) | Kept | Kept | Kept | Lost for meshed traffic | Lost for meshed traffic |
-| Flagger (lesson 9) | Unchanged | Unchanged | Unchanged | Move to Istio's metrics, or keep canaries on Gateway traffic | Same as E |
-| OTel Demo (lesson 10) as the test estate | Yes | Yes | Yes | Yes: mesh one namespace first | Yes |
+| Hubble L7 and `httpV2` metrics (lessons 7, 10) | Kept | Kept | Kept | Lost for meshed traffic | Lost for meshed traffic |
+| Flagger (lesson 10) | Unchanged | Unchanged | Unchanged | Move to Istio's metrics, or keep canaries on Gateway traffic | Same as E |
+| OTel Demo (lesson 11) as the test estate | Yes | Yes | Yes | Yes: mesh one namespace first | Yes |
 | Memory | None | SPIRE server and agents | Envoy per node | ztunnel per node, istiod, waypoints | A proxy per pod |
 
 > [!WARNING]
@@ -93,7 +93,7 @@ Combinations worth naming:
 
 ## Requirements
 
-**In the cluster**: lessons 0 to 14 done. The OpenTelemetry Demo (lesson 10)
+**In the cluster**: lessons 0 to 15 done. The OpenTelemetry Demo (lesson 11)
 is the traffic to encrypt and mesh.
 
 **On your machine**: `kubectl`, `helm`, `flux`, `cilium`, `hubble`, and

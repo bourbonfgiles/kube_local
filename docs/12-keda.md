@@ -1,4 +1,4 @@
-# 11. Event-driven scaling with KEDA
+# 12. Event-driven scaling with KEDA
 
 > You end up with: the shop's `accounting` consumer scaling out when Kafka lag
 > builds up and back in when it clears, instead of on CPU.
@@ -40,7 +40,7 @@ workers, with the scaler authenticating through an IAM role
 
 ## Requirements
 
-**In the cluster**: the OpenTelemetry Demo in `otel-demo` (lesson 10), and
+**In the cluster**: the OpenTelemetry Demo in `otel-demo` (lesson 11), and
 `metrics-server` (k3s ships it; `kubectl --context k3d-dev top nodes` works).
 
 **On your machine**: `kubectl`, `helm`, `flux`, and `sofka`
@@ -219,7 +219,7 @@ the load up.
    lag into them.
 2. Add a second trigger, `cron`, holding 2 replicas during "business hours".
    KEDA takes the maximum of all triggers.
-3. Watch `accounting` scale while Chaos Mesh (lesson 14) kills its pods.
+3. Watch `accounting` scale while Chaos Mesh (lesson 15) kills its pods.
 4. Harder: the same scaling from a `prometheus` trigger on the demo's own
    Kafka metrics instead of the `kafka` scaler, and compare how quickly each
    reacts.
@@ -227,7 +227,7 @@ the load up.
 ## Where it gets hard
 
 - Flux and KEDA both want to set replicas. If the demo's HelmRelease has drift
-  detection on, ignore `/spec/replicas` for Deployments (lesson 9), or they
+  detection on, ignore `/spec/replicas` for Deployments (lesson 10), or they
   fight.
 - Don't add your own HPA for the same Deployment; KEDA owns it.
 - Consumers beyond the partition count do nothing.

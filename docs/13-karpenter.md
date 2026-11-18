@@ -1,4 +1,4 @@
-# 12. Karpenter on simulated nodes
+# 13. Karpenter on simulated nodes
 
 > You end up with: Karpenter creating and removing nodes as pods come and go,
 > making the same decisions it would on EKS, on fake nodes that cost nothing.
@@ -45,7 +45,7 @@ learn here carry over unchanged.
 ## Requirements
 
 **In the cluster**: Flux, `infra-dev-config` (lesson 4) and the local
-registry (lesson 7).
+registry (lesson 8).
 
 **On your machine**: `git`, `go`, `ko`, `kwok`, `make`, `kubectl`, `helm`,
 `flux`, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
