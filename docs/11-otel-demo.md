@@ -326,7 +326,7 @@ then remove it for the chart's 5.
 
 1. Take one page load and explain every service it touched, from the trace
    and from Hubble.
-2. Turn on `kafkaQueueProblems` and find the lag in Grafana. Lesson 12 builds
+2. Turn on `kafkaQueueProblems` and find the lag in Grafana. Lesson 13 builds
    on this.
 3. Once lesson 7 is in: turn off the bundled Prometheus and Grafana in base
    values and point the collector at yours.
@@ -463,7 +463,7 @@ then remove it for the chart's 5.
   `kubectl --context k3d-dev top nodes`. That's usage, but the scheduler places
   pods by requests: sofka's `:nodes` ([lesson 0](00-tools.md)) has `%CPU/R` and `%MEM/R`, the share of
   each node that pods have already asked for.
-- The Kafka consumers lag when the load generator is busy. That's lesson 12.
+- The Kafka consumers lag when the load generator is busy. That's lesson 13.
 
 ## Links
 

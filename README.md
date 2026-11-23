@@ -1,9 +1,49 @@
 # kube_local
 
-The platform layer for a local k3d cluster that stands in for a bare EKS
-cluster. The dotfiles repo creates the cluster with no CNI; this repo makes it
-ready for a GitOps tool. Nothing else is installed. [docs/](docs/README.md) is a
-numbered learning path for what to add next.
+How I keep current with Kubernetes and EKS while my day job runs neither. A
+local cluster built to mirror EKS wherever it can, run entirely through
+GitOps, with a written lesson for every product on it.
+
+| | |
+| --- | --- |
+| [Lessons](docs/README.md) | 15 written, a mesh stub, 4 planned: Cilium, Flux, ExternalDNS, cert-manager, SOPS, Flux Operator, monitoring, registry, image promotion, Flagger, OpenTelemetry, Istio ambient, KEDA, Karpenter, BPF profiling, Chaos Mesh |
+| [Decisions](docs/adr/README.md) | What was picked, what it costs, what changes on EKS |
+| [CI](.github/workflows/validate.yaml) | Every Flux layer built offline and validated against Kubernetes and CRD schemas |
+
+```mermaid
+flowchart LR
+  git["Git<br/>this repo"] --> flux["Flux"]
+  flux --> infra["Platform<br/>Cilium, ExternalDNS, cert-manager,<br/>SOPS, monitoring, registry"]
+  flux --> apps["Workloads<br/>OTel shop, KEDA, Karpenter,<br/>Flagger canaries"]
+  infra --> gw["Cilium Gateway<br/>HTTPS *.kube.internal"]
+  gw --> apps
+```
+
+## Here and on EKS
+
+| Concern | Here | On EKS | Lesson |
+| --- | --- | --- | --- |
+| Nodes | k3d on rootful Podman; EKS-style node names, zone and instance-type labels | Managed node groups | Platform |
+| Pod network, Services | Cilium, kube-proxy replacement | VPC CNI, or Cilium | 1 |
+| Load balancer | Cilium LB-IPAM with L2 announcements | NLB or ALB through the AWS Load Balancer Controller | 1 |
+| Ingress | Gateway API on Cilium | Gateway API on the Load Balancer Controller, or Cilium | 1 |
+| GitOps | Flux, run by Flux Operator | Flux, or Argo CD managed by EKS Capabilities | 2, 6 |
+| DNS | BIND, RFC2136 with a TSIG key | Route53, with an IAM role | 3 |
+| Certificates | cert-manager with a private mkcert CA | ACM on the load balancer, or cert-manager with Let's Encrypt or AWS Private CA | 4 |
+| Secrets | SOPS with age | SOPS with KMS, or External Secrets with Secrets Manager | 5 |
+| Metrics | Prometheus and Grafana | The same, or Amazon Managed Prometheus and Grafana | 7 |
+| Registry | k3d's registry | ECR, with pull-through cache | 8 |
+| Mesh | Istio ambient (planned) | The same | 12 |
+| Node autoscaling | Karpenter on KWOK nodes | Karpenter on EC2 | 14 |
+| Workload IAM | IRSA against a real AWS account (planned) | Pod Identity, or IRSA | 18 |
+| Deprecated APIs | An alert on the API server's metric (planned) | Cluster insights | 19 |
+| Self-service | kro (planned) | kro through EKS Capabilities | 20 |
+
+## The platform layer
+
+This repo starts from a bare cluster: the dotfiles repo creates it with no
+CNI, and `bootstrap.sh` makes it ready for Flux. Everything after that is in
+Git and applied by Flux, following [docs/](docs/README.md).
 
 ## Contents
 
@@ -16,8 +56,13 @@ overlays/local/               Everything that only exists because this is k3d.
   dns/bind.yaml               BIND serving kube.internal (stand-in for Route53).
   dns/tsig-secret.sh          TSIG key BIND accepts updates with. Never in Git.
   dns/coredns-custom.yaml     Pods resolve kube.internal through BIND.
+clusters/, infrastructure/,   What Flux applies, in layers.
+  apps/
 docs/                         Lessons: what to install next, by hand then with Flux.
+  adr/                        Decisions behind the platform.
 .github/renovate.json5        Renovate: bumps the Cilium and Gateway API pins in bootstrap.sh.
+.github/validate.sh           Builds every Flux Kustomization offline and runs kubeconform.
+.github/workflows/            Runs validate.sh on pull requests and on master.
 ```
 
 Helm merges `cilium/values.yaml` then `overlays/local/cilium-values.yaml`. No
@@ -142,7 +187,8 @@ Pass: merge the PR. Fail: comment on the PR and run `bootstrap.sh` from
 
 ## Not emulated
 
-- IRSA / Pod Identity: no AWS IAM.
+- Pod Identity: its agent calls an API only EKS clusters have. IRSA can be
+  done against a real AWS account (lesson 18, planned).
 - Route53: BIND over RFC2136. LocalStack's Route53 DNS needs a paid plan.
 - EBS: `local-path` only.
 - NLB/ALB: L2 announcements.

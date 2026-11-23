@@ -1,4 +1,4 @@
-# 15. Chaos Mesh with an on/off switch
+# 16. Chaos Mesh with an on/off switch
 
 > You end up with: scheduled experiments that kill pods, add latency and burn
 > CPU in the shop, all switched on and off by one value in Git.

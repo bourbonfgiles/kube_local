@@ -1,12 +1,12 @@
-# 16. What to pair with Cilium (stub)
+# 12. Istio ambient, beside Cilium (stub)
 
 > [!NOTE]
-> A stub. It lays out the options and what each costs in this cluster. Pick
-> one, then the lesson gets written in the usual layout: by hand for
-> comparison, install with Flux, iterate, exercises.
+> A stub. The choice is made (below); the lesson still needs writing in the
+> usual layout: by hand for comparison, install with Flux, iterate,
+> exercises. The options stay as the reasoning behind it.
 
-> You end up with: traffic between pods encrypted, and, depending on the
-> choice, workload identity and L7 policy between services.
+> You end up with: mTLS with workload identity between the shop's services,
+> L7 policy where it's wanted, and WireGuard encrypting what isn't meshed.
 
 ## What it is
 
@@ -62,6 +62,18 @@ Combinations worth naming:
 | E alone | The usual EKS pattern: mesh traffic is mTLS, AWS Nitro hardware encrypts between instances anyway |
 | C + D | All-Cilium, if staying with one vendor matters more than maturity |
 
+## Decided
+
+| Question | Choice |
+| --- | --- |
+| Mesh | **E, Istio ambient**: what EKS shops mean by a mesh, no sidecars |
+| Encryption for the rest | **A, Cilium WireGuard**, as a section of this lesson |
+| Who owns the edge | The Cilium Gateway stays. Entry services (`frontend-proxy`) are `PERMISSIVE`, everything behind them `STRICT`. Moving the edge to Istio's Gateway is an exercise |
+| What gets meshed | Namespaces opt in with `istio.io/dataplane-mode: ambient`. Keep the namespace you do BPF work in (lesson 15) out, so the book's tools see one connection, not two |
+| Why it's here | After the OTel Demo (lesson 11), so KEDA, chaos and the platform lesson run on a meshed estate |
+
+The reasoning is in [ADR 0004](adr/0004-istio-ambient.md).
+
 ## On EKS
 
 - The AWS VPC CNI encrypts nothing. Current Nitro instance types encrypt
@@ -93,14 +105,14 @@ Combinations worth naming:
 
 ## Requirements
 
-**In the cluster**: lessons 0 to 15 done. The OpenTelemetry Demo (lesson 11)
+**In the cluster**: lessons 0 to 11 done. The OpenTelemetry Demo (lesson 11)
 is the traffic to encrypt and mesh.
 
 **On your machine**: `kubectl`, `helm`, `flux`, `cilium`, `hubble`, and
 `sofka` or `k9s`. For E: `istioctl`. For G: `linkerd`. `tcpdump` (from the
 base image) to see the wire before and after.
 
-## Decide
+## The questions behind it
 
 | Question | If yes |
 | --- | --- |
