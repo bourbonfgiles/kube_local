@@ -1,0 +1,8 @@
+# ~/repos/personal/kube_local/.sops.yaml
+creation_rules:
+  - path_regex: secrets/.*\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    # yours (step 1), then the cluster's (step 2)
+    age: >-
+      age1qwpvnxlseumvu48lgyp4vx00m6wqjqftls2vde3x8ax3svg4nf2swkqchn,
+      age10euhg9tq0r7jk2cgcayejy09xt6jkhl7ktgvck6reqq082ulvy4s3nleum
