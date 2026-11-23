@@ -9,6 +9,8 @@ kind: Gateway
 metadata:
   name: web
   namespace: gateway
+  annotations:
+    cert-manager.io/cluster-issuer: ${CLUSTER_ISSUER}
 spec:
   gatewayClassName: cilium
   listeners:
@@ -18,3 +20,14 @@ spec:
       allowedRoutes:
         namespaces:
           from: All
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.${CLUSTER_DOMAIN}"
+      allowedRoutes:
+        namespaces:
+          from: All
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: wildcard-tls

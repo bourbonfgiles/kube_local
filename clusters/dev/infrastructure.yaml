@@ -16,6 +16,7 @@ spec:
     substitute:
       CLUSTER_NAME: dev
       CLUSTER_DOMAIN: kube.internal
+      CLUSTER_ISSUER: local-ca
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -31,4 +32,20 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./infrastructure/dev
+  prune: true
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infra-dev-config
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 1m
+  dependsOn:
+    - name: infra-dev
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./infrastructure/dev-config
   prune: true
