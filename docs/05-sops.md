@@ -144,6 +144,15 @@ creation_rules:
       age1...
 ```
 
+Replace both `age1...` with the real public keys, keeping the comma after the
+first. Each command prints one:
+
+```sh
+secret-tool lookup service sops-age | age-keygen -y
+kubectl --context k3d-dev -n flux-system get secret sops-age \
+  -o jsonpath='{.data.age\.agekey}' | base64 -d | age-keygen -y
+```
+
 | Line | Means |
 | --- | --- |
 | `path_regex` | Which files the rule covers: any `.yaml` under `secrets/`. A file matching no rule won't encrypt without flags. |
@@ -162,25 +171,32 @@ commands below pass `--config` so it works from anywhere.
 
 ### 4. The hand-made Secrets as encrypted files
 
-The TSIG Secret, encrypted before it's staged:
+Each Secret is piped from `kubectl` straight into sops, so the plaintext never
+touches disk. `--filename-override` tells sops which path the output is for,
+so the rule's `path_regex` still matches. If sops fails, you're left with an
+empty file, never a plaintext one.
+
+The TSIG Secret:
 
 ```sh
 mkdir -p ~/repos/personal/kube_local/secrets/dev
+f=~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml
 kubectl --context k3d-dev -n external-dns create secret generic externaldns-tsig \
   --from-literal=secret="$(kubectl --context k3d-dev -n dns get secret externaldns-tsig \
     -o jsonpath='{.data.secret}' | base64 -d)" \
-  --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml
-sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml
+  --dry-run=client -o yaml \
+  | sops --config ~/repos/personal/kube_local/.sops.yaml encrypt --filename-override "$f" > "$f"
 ```
 
 The CA the same way:
 
 ```sh
+f=~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml
 kubectl --context k3d-dev -n cert-manager create secret tls local-ca \
   --cert="$(mkcert -CAROOT)/rootCA.pem" --key="$(mkcert -CAROOT)/rootCA-key.pem" \
-  --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml
-sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml
-cat ~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml
+  --dry-run=client -o yaml \
+  | sops --config ~/repos/personal/kube_local/.sops.yaml encrypt --filename-override "$f" > "$f"
+cat "$f"
 ```
 
 `data` is ciphertext; `metadata` is readable; a `sops:` block at the end
@@ -235,9 +251,10 @@ k9s `Shift-q` (dotfiles plugin).
 A throwaway Secret, committed encrypted and removed at the end.
 
 ```sh
+f=~/repos/personal/kube_local/secrets/dev/demo.yaml
 kubectl --context k3d-dev -n default create secret generic demo \
-  --from-literal=password=hunter2 --dry-run=client -o yaml > ~/repos/personal/kube_local/secrets/dev/demo.yaml
-sops --config ~/repos/personal/kube_local/.sops.yaml --encrypt --in-place ~/repos/personal/kube_local/secrets/dev/demo.yaml
+  --from-literal=password=hunter2 --dry-run=client -o yaml \
+  | sops --config ~/repos/personal/kube_local/.sops.yaml encrypt --filename-override "$f" > "$f"
 git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/secrets/dev/demo.yaml
 git -C ~/repos/personal/kube_local commit -m "SOPS demo secret"
 git -C ~/repos/personal/kube_local push
@@ -310,6 +327,10 @@ kubectl --context k3d-dev -n default get secret demo
   rebuild BIND has a key Git doesn't; redo step 4 and push.
 - `sops --encrypt` on a file that's already encrypted fails; `sops` (edit) is
   for changing one.
+- An empty file under `secrets/` means an encrypt failed, usually because
+  `.sops.yaml` still has the `age1...` placeholders. Before `git add`,
+  `grep -L '^sops:' ~/repos/personal/kube_local/secrets/dev/*.yaml` lists any
+  file that isn't encrypted.
 - With `SOPS_AGE_KEY_CMD` unset, or the keyring locked (over SSH, say), sops
   falls back to `~/.config/sops/age/keys.txt`, finds nothing, and reports that
   no key could decrypt the file.
