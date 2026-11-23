@@ -1,9 +1,10 @@
 # Learning path
 
-Sixteen lessons on top of the platform, after a short one on the tools. Each one installs an upstream product
-through Flux, and every change after that is a commit. The `helm` /
-`kubectl apply` equivalent is shown once, for comparison, never run. You write
-manifests and values, never application code.
+Sixteen lessons on top of the platform, after a short one on the tools, and
+four more planned. Each one installs an upstream product through Flux, and
+every change after that is a commit. The `helm` / `kubectl apply` equivalent
+is shown once, for comparison, never run. You write manifests and values,
+never application code.
 
 ## How a lesson is laid out
 
@@ -41,11 +42,11 @@ come before Flux, by hand. Lesson 2 is Flux itself. Lesson 0 is a reference for 
 | 9 | [Image promotion](09-image-promotion.md) | Flux committing new tags to Git | 8 |
 | 10 | [Flagger](10-flagger.md) | Automated canaries through the Gateway; podinfo retired | 7, 9 |
 | 11 | [OpenTelemetry Demo](11-otel-demo.md) | A 20-service shop with traces and Kafka | 3 |
-| 12 | [KEDA](12-keda.md) | The shop's Kafka consumer scaled on lag | 11 |
-| 13 | [Karpenter](13-karpenter.md) | Karpenter provisioning simulated nodes | 2, 8 |
-| 14 | [Minecraft](14-minecraft.md) | A Java server you can join and profile with BPF | 2 |
-| 15 | [Chaos Mesh](15-chaos.md) | Chaos experiments behind one on/off flag in Git | 11 |
-| 16 | [Pairing with Cilium](16-cilium-pairing.md) (stub) | Encryption between pods, and a mesh if chosen | 1, 7, 10, 11 |
+| 12 | [Istio ambient](12-istio-ambient.md) (stub) | mTLS and identity between the shop's services; WireGuard for the rest | 1, 7, 10, 11 |
+| 13 | [KEDA](13-keda.md) | The shop's Kafka consumer scaled on lag | 11 |
+| 14 | [Karpenter](14-karpenter.md) | Karpenter provisioning simulated nodes | 2, 8 |
+| 15 | [Minecraft](15-minecraft.md) | A Java server you can join and profile with BPF | 2 |
+| 16 | [Chaos Mesh](16-chaos.md) | Chaos experiments behind one on/off flag in Git | 11 |
 
 ## Where commands run
 
@@ -62,7 +63,7 @@ Everything lives side by side in `~/repos/personal`:
 | `~/repos/personal/dotfiles` | The machine and the CNI-less cluster |
 | `~/repos/personal/kube_local` | This repo: the platform, the lessons, and everything Flux applies |
 | `~/repos/personal/scratch` | Not a repo. Lessons 0 and 1 and the odd local check |
-| `~/repos/personal/karpenter`, `~/repos/personal/FlameGraph` | Clones for lessons 13 and 14 |
+| `~/repos/personal/karpenter`, `~/repos/personal/FlameGraph` | Clones for lessons 14 and 15 |
 
 Every command names the cluster, so a work context can never be hit by
 mistake:
@@ -170,6 +171,17 @@ The `flux` CLI covers the rest: `flux diff`, `flux events`.
   `flux --context k3d-dev events -A`. The repo README's Troubleshooting table
   covers the platform.
 
+## Planned lessons
+
+In order, after 16. Each still needs writing in the usual layout.
+
+| # | Lesson | You end up with | Uses |
+| --- | --- | --- | --- |
+| 17 | Policy and supply chain | Pod Security Admission labels on every namespace; Kyverno or the built-in `ValidatingAdmissionPolicy`, audit then enforce; mirrored images signed with cosign and refused unsigned | 5, 8, 9 |
+| 18 | IRSA against a real AWS account | An AWS account (root MFA, no root keys, IAM Identity Center, `aws sso login`, a budget alarm); the cluster's service account issuer published to S3 as an IAM OIDC provider; pods assuming roles with `AssumeRoleWithWebIdentity`; what Pod Identity changes on EKS. A k3s argument change, so `kube-delete` / `kube-create` | 2, 5 |
+| 19 | Upgrade drill | An alert on `apiserver_requested_deprecated_apis`, the signal EKS cluster insights reads; PDBs and topology spread across the zone labels; drains that respect them; a k3s minor bump, then a Cilium minor, restored from Git | 7, 14 |
+| 20 | Platform with kro | A `ResourceGraphDefinition` that onboards a team: namespace, quota, `LimitRange`, RBAC, a Flux tenant `Kustomization`, mesh enrolment and policy by default. EKS Capabilities runs kro managed | 12, 17 |
+
 ## More lessons
 
 Each is one or two charts and a clear thing to learn.
@@ -177,14 +189,9 @@ Each is one or two charts and a clear thing to learn.
 | Area | Idea |
 | --- | --- |
 | GitOps | **Flux notifications**: `Provider` and `Alert` objects posting reconcile failures to Discord or Slack. |
-| GitOps | **Flux multi-tenancy**: a tenant namespace with its own service account, and a Flux `Kustomization` that can only touch it. |
-| GitOps | **Cluster upgrade drill**: bump k3s a minor in the dotfiles config, rebuild, give Flux a new deploy key, let it restore everything. Then a Cilium minor. |
 | Security | **Tetragon**: Cilium's eBPF runtime security. Trace process execs and file access in pods. |
-| Security | **Kyverno**: policies such as "images only from the local registry", in audit then enforce mode. |
 | Security | **Trivy Operator**: vulnerability and config reports as CRDs you can browse in sofka or k9s. |
-| Security | **Network policy hardening**: default-deny a namespace, then allow only what Hubble shows is needed. |
-| AWS stand-ins | **MinIO** as S3, then **Velero** backing up namespaces to it and restoring into a rebuilt cluster. |
-| AWS stand-ins | **CloudNativePG** as RDS: a Postgres cluster, failover, backups to MinIO. |
 | Observability | **Loki and Alloy**: logs next to the metrics from lesson 7. |
-| Resilience | **PodDisruptionBudgets and topology spread**: drain nodes and see what survives. The agents carry zone labels for this. |
+| Observability | **An always-on eBPF profiler**: Grafana Pyroscope or the OpenTelemetry eBPF profiler, as a DaemonSet beside lesson 7. |
+| Observability | **Inspektor Gadget** in lesson 15: the book's BPF tools selected by namespace and pod, as EKS teams run them where there's no shell on the node. |
 | Resilience | **VPA with Goldilocks**: requests and limits recommended from real usage. |

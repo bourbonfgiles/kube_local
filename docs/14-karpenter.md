@@ -1,4 +1,4 @@
-# 13. Karpenter on simulated nodes
+# 14. Karpenter on simulated nodes
 
 > You end up with: Karpenter creating and removing nodes as pods come and go,
 > making the same decisions it would on EKS, on fake nodes that cost nothing.

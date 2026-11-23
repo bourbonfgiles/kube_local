@@ -1,4 +1,4 @@
-# 14. Minecraft (Java)
+# 15. Minecraft (Java)
 
 > You end up with: a Minecraft server you and friends can join, and a flame
 > graph of what its JVM spends time on, taken with BPF from the host.
@@ -255,8 +255,8 @@ This is the hard part, so it comes last. All of it runs on your machine.
    ```
 3. A CPU profile in folded format, 49 Hz for 30 seconds, while someone plays:
    ```sh
-   mkdir -p ~/repos/personal/scratch/13
-   sudo /usr/share/bcc/tools/profile -p "$PID" -F 49 -f 30 > ~/repos/personal/scratch/13/mc.folded
+   mkdir -p ~/repos/personal/scratch/15
+   sudo /usr/share/bcc/tools/profile -p "$PID" -F 49 -f 30 > ~/repos/personal/scratch/15/mc.folded
    ```
 4. Java frames show as hex: the JIT-compiled code has no symbols. Have the JVM
    write a perf map, then put it where BCC looks on the host:
@@ -272,8 +272,8 @@ This is the hard part, so it comes last. All of it runs on your machine.
 5. A flame graph:
    ```sh
    git clone https://github.com/brendangregg/FlameGraph ~/repos/personal/FlameGraph
-   ~/repos/personal/FlameGraph/flamegraph.pl ~/repos/personal/scratch/13/mc.folded > ~/repos/personal/scratch/13/mc.svg
-   cp ~/repos/personal/scratch/13/mc.svg ~/Downloads/   # Zen can only open files from there
+   ~/repos/personal/FlameGraph/flamegraph.pl ~/repos/personal/scratch/15/mc.folded > ~/repos/personal/scratch/15/mc.svg
+   cp ~/repos/personal/scratch/15/mc.svg ~/Downloads/   # Zen can only open files from there
    ```
 6. Watch an OOM kill as it happens: lower the memory limit in base values,
    push, add load, and run `sudo /usr/share/bcc/tools/oomkill`. Compare what
