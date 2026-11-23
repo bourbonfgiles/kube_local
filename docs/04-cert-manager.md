@@ -54,7 +54,7 @@ cert-manager and terminate TLS on the load balancer with ACM.
 **On your machine**: `mkcert`, `/usr/bin/trust`, `openssl`, `kubectl`,
 `helm`, `flux`, `curl`, Zen, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
 
-## Trust the CA on Bazzite 44
+## Trust the CA on Bazzite 45
 
 This is once per machine, not per cluster. There are three trust stores here,
 and each needs the CA:
@@ -563,8 +563,12 @@ behind, so delete that last one by hand.
 
 - Brew's `curl` fails with "unable to get local issuer certificate" until the
   trust step 3. `/usr/bin/curl` works straight away.
-- If Zen has DNS over HTTPS on, it asks the DoH provider, which has never heard
-  of `kube.internal`. Add it under DNS over HTTPS > Manage Exceptions.
+- Zen sends `kube.internal` somewhere that has never heard of it, while `curl`
+  works fine:
+  - DNS over HTTPS on: "Hmm. We're having trouble finding that site". Add
+    `kube.internal` under DNS over HTTPS > Manage Exceptions.
+  - A VPN or proxy extension: "Unable to connect". Add `kube.internal` to its
+    bypass / split-tunnelling list.
 - cert-manager ignores listeners without a `hostname`, and Gateways entirely
   unless `enableGatewayAPI` is in its config. Either way: no Certificate, no
   error.
