@@ -23,7 +23,7 @@ flowchart LR
 
 | Piece | Lives | Note |
 | --- | --- | --- |
-| Your private key | GNOME Keyring, read by sops through `SOPS_AGE_KEY_CMD` | Never a file on disk, never shared |
+| Your private key | The login keyring (oo7 on Fedora 45, through the Secret Service API), read by sops through `SOPS_AGE_KEY_CMD` | Never a file on disk, never shared |
 | The cluster's private key | Only Secret `flux-system/sops-age` | Made new with each cluster |
 | Public keys | `~/repos/personal/kube_local/.sops.yaml` in the repo | Anyone can encrypt with them |
 | `~/repos/personal/kube_local/.sops.yaml` | Repo root | Which files to encrypt, which fields, to which keys |
@@ -76,7 +76,7 @@ does.
 | Kind | Name | File |
 | --- | --- | --- |
 | SOPS rules | | `~/repos/personal/kube_local/.sops.yaml` |
-| Your key | GNOME Keyring, `service sops-age` | By hand, once per machine |
+| Your key | The login keyring, `service sops-age` | By hand, once per machine |
 | Secret | `flux-system/sops-age` | By hand, once per cluster: a new key each time |
 | Kustomization | `secrets` | `~/repos/personal/kube_local/clusters/dev/secrets.yaml` |
 | Secret, encrypted | `external-dns/externaldns-tsig` | `~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml` |
@@ -95,13 +95,14 @@ secret-tool lookup service sops-age | age-keygen -y
 
 The second line prints your public key (`age1...`). sops runs
 `$SOPS_AGE_KEY_CMD` whenever it needs to decrypt, so the private key is never
-written to a file.
+written to a file. To see the item: `secret-tool search --all service
+sops-age`, or Key Rack (`app.drey.KeyRack`), the GNOME app for oo7.
 
-> [!CAUTION]
-> Back it up outside this machine: put the output of
-> `secret-tool lookup service sops-age` in your password manager. Your key is
-> what re-keys the files after a rebuild; lose it with the cluster and
-> nothing in Git can be decrypted.
+> [!NOTE]
+> No backup needed here. Your key is what re-keys the files after a rebuild;
+> lose it with the cluster and make two new keys (steps 1 and 2), then redo
+> step 4 from the sources: BIND has the TSIG key, `mkcert -CAROOT` the CA. In
+> a team, a lost key means asking to be added again.
 
 ### 2. A key for the cluster
 
