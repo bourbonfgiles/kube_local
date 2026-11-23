@@ -313,7 +313,8 @@ curl -s -o /dev/null -w '%{http_code}\n' http://jaeger.otel.kube.internal/jaeger
 
 `200` once ExternalDNS has the name. `/` on its own 404s: the base path stays
 `/jaeger/ui` unless you change it in values. It's plain HTTP: the wildcard
-certificate covers one level, not `*.otel.kube.internal` (lesson 4).
+certificate covers one level, not `*.otel.kube.internal` (lesson 4). Exercise
+4 fixes that.
 
 ### More load
 
@@ -329,7 +330,125 @@ then remove it for the chart's 5.
    on this.
 3. Once lesson 7 is in: turn off the bundled Prometheus and Grafana in base
    values and point the collector at yours.
-4. Harder: lock the namespace down with CiliumNetworkPolicies, one service at a
+4. Serve Jaeger over HTTPS. The `https` listener's `*.kube.internal` already
+   accepts the route, since Gateway API wildcards match any depth, but the
+   certificate's `*` covers one label, so Zen rejects it with
+   `SSL_ERROR_BAD_CERT_DOMAIN`. Add a second HTTPS listener for
+   `*.otel.${CLUSTER_DOMAIN}` with its own Secret; cert-manager issues the
+   certificate from the Gateway's annotation, as in lesson 4.
+
+   **Answer**
+
+   **Replace `~/repos/personal/kube_local/infrastructure/base/gateway/gateway.yaml`**
+
+   Before:
+   ```yaml
+   # ~/repos/personal/kube_local/infrastructure/base/gateway/gateway.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: gateway
+   ---
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: Gateway
+   metadata:
+     name: web
+     namespace: gateway
+     annotations:
+       cert-manager.io/cluster-issuer: ${CLUSTER_ISSUER}
+   spec:
+     gatewayClassName: cilium
+     listeners:
+       - name: http
+         protocol: HTTP
+         port: 80
+         allowedRoutes:
+           namespaces:
+             from: All
+       - name: https
+         protocol: HTTPS
+         port: 443
+         hostname: "*.${CLUSTER_DOMAIN}"
+         allowedRoutes:
+           namespaces:
+             from: All
+         tls:
+           mode: Terminate
+           certificateRefs:
+             - name: wildcard-tls
+   ```
+
+   After:
+   ```yaml
+   # ~/repos/personal/kube_local/infrastructure/base/gateway/gateway.yaml
+   apiVersion: v1
+   kind: Namespace
+   metadata:
+     name: gateway
+   ---
+   apiVersion: gateway.networking.k8s.io/v1
+   kind: Gateway
+   metadata:
+     name: web
+     namespace: gateway
+     annotations:
+       cert-manager.io/cluster-issuer: ${CLUSTER_ISSUER}
+   spec:
+     gatewayClassName: cilium
+     listeners:
+       - name: http
+         protocol: HTTP
+         port: 80
+         allowedRoutes:
+           namespaces:
+             from: All
+       - name: https
+         protocol: HTTPS
+         port: 443
+         hostname: "*.${CLUSTER_DOMAIN}"
+         allowedRoutes:
+           namespaces:
+             from: All
+         tls:
+           mode: Terminate
+           certificateRefs:
+             - name: wildcard-tls
+       # ── new ──
+       - name: https-otel
+         protocol: HTTPS
+         port: 443
+         hostname: "*.otel.${CLUSTER_DOMAIN}"
+         allowedRoutes:
+           namespaces:
+             from: All
+         tls:
+           mode: Terminate
+           certificateRefs:
+             - name: otel-wildcard-tls
+       # ── end new ──
+   ```
+
+   The Jaeger route has no `sectionName`, so it attaches to the new listener
+   by itself. If you pinned routes to `sectionName: https` (lesson 4,
+   exercise 1), change Jaeger's to `https-otel`.
+
+   ```sh
+   git -C ~/repos/personal/kube_local pull
+   git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/base/gateway/gateway.yaml
+   git -C ~/repos/personal/kube_local commit -m "Gateway: HTTPS listener for *.otel"
+   git -C ~/repos/personal/kube_local push
+   flux --context k3d-dev reconcile kustomization infra-base --with-source
+   kubectl --context k3d-dev get certificates -n gateway -w
+   echo | openssl s_client -connect jaeger.otel.kube.internal:443 \
+     -servername jaeger.otel.kube.internal 2>/dev/null | openssl x509 -noout -ext subjectAltName
+   curl -s -o /dev/null -w '%{http_code}\n' https://jaeger.otel.kube.internal/jaeger/ui/
+   ```
+
+   Two Certificates, `wildcard-tls` and `otel-wildcard-tls`. Both listeners
+   share port 443, and Envoy picks the certificate from the SNI, the most
+   specific hostname winning. Then open
+   <https://jaeger.otel.kube.internal/jaeger/ui/> in Zen.
+5. Harder: lock the namespace down with CiliumNetworkPolicies, one service at a
    time, using Hubble to see what each one needs. Allow the `ingress` entity
    into `frontend-proxy`. Finish with a default-deny that the shop still works
    behind.
