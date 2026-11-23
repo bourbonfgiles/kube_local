@@ -1,0 +1,8 @@
+# ~/repos/personal/kube_local/infrastructure/dev-config/cert-manager/cluster-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-ca
+spec:
+  ca:
+    secretName: local-ca
