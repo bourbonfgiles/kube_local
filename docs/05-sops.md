@@ -7,21 +7,25 @@
 
 SOPS encrypts the *values* in a YAML file and leaves the keys readable, so a
 Secret in Git still shows its name, namespace and field names, and diffs stay
-meaningful. It encrypts to one or more keys: here an **age** key pair, a
-modern replacement for GPG keys.
+meaningful. It encrypts to one or more **age** keys, a modern replacement
+for GPG keys. Every file is encrypted to every recipient listed, and any one
+private key opens it, so nobody shares a private key: you have yours, the
+cluster has its own, and a colleague would add theirs.
 
 ```mermaid
 flowchart LR
-  you["You: sops --encrypt<br/>with the age public key"] --> git["Git<br/>data: ENC[AES256_GCM,...]"]
+  you["You: sops --encrypt<br/>to your key and the cluster's"] --> git["Git<br/>data: ENC[AES256_GCM,...]"]
   git --> kc["kustomize-controller<br/>decryption: sops"]
-  key["Secret sops-age<br/>age private key"] --> kc
+  key["Secret sops-age<br/>the cluster's private key"] --> kc
   kc --> sec["Secret in the cluster<br/>plain values"]
+  ring["Your keyring<br/>your private key"] -.->|"sops --decrypt, edit"| git
 ```
 
 | Piece | Lives | Note |
 | --- | --- | --- |
-| age public key | `~/repos/personal/kube_local/.sops.yaml` in the repo | Anyone can encrypt with it |
-| age private key | `~/.config/sops/age/keys.txt`, and Secret `flux-system/sops-age` | The one thing never in Git |
+| Your private key | GNOME Keyring, read by sops through `SOPS_AGE_KEY_CMD` | Never a file on disk, never shared |
+| The cluster's private key | Only Secret `flux-system/sops-age` | Made new with each cluster |
+| Public keys | `~/repos/personal/kube_local/.sops.yaml` in the repo | Anyone can encrypt with them |
 | `~/repos/personal/kube_local/.sops.yaml` | Repo root | Which files to encrypt, which fields, to which keys |
 | Encrypted Secret | `~/repos/personal/kube_local/secrets/dev/*.yaml` | Safe to commit |
 
@@ -35,6 +39,10 @@ kustomize-controller gets an IAM role allowed to decrypt with it. Nothing to
 copy into the cluster by hand. The other common choice is External Secrets
 Operator reading AWS Secrets Manager, so secrets never touch Git at all.
 
+In a team on KMS, who can decrypt is an IAM permission on the key, not a list
+of age keys: joining and leaving happen in IAM. age keys stay for break-glass
+access, or for people outside AWS.
+
 ## Requirements
 
 **In the cluster**: lessons 0 to 4 done. This lesson moves their two
@@ -42,7 +50,10 @@ hand-made Secrets into Git: `external-dns/externaldns-tsig` (lesson 3) and
 `cert-manager/local-ca` (lesson 4).
 
 **On your machine**: `sops`, `age` and `age-keygen` (comes with `age`),
-`kubectl`, `flux`, `git`, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
+`secret-tool` (in the image), `kubectl`, `flux`, `git`, and `sofka` or `k9s`
+([lesson 0](00-tools.md)). `SOPS_AGE_KEY_CMD` set to
+`secret-tool lookup service sops-age`, from dotfiles: `echo $SOPS_AGE_KEY_CMD`
+shows it.
 
 ## By hand, for comparison
 
@@ -57,33 +68,57 @@ touches disk:
 sops --decrypt secret.yaml | kubectl --context k3d-dev apply -f -
 ```
 
-Whoever runs that needs the private key. With Flux only the cluster does.
+Whoever runs that needs one of the private keys. With Flux only the cluster
+does.
 
 ## Install with Flux
 
 | Kind | Name | File |
 | --- | --- | --- |
 | SOPS rules | | `~/repos/personal/kube_local/.sops.yaml` |
-| Secret | `flux-system/sops-age` | By hand only: it's the key to everything else |
+| Your key | GNOME Keyring, `service sops-age` | By hand, once per machine |
+| Secret | `flux-system/sops-age` | By hand, once per cluster: a new key each time |
 | Kustomization | `secrets` | `~/repos/personal/kube_local/clusters/dev/secrets.yaml` |
 | Secret, encrypted | `external-dns/externaldns-tsig` | `~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml` |
 | Secret, encrypted | `cert-manager/local-ca` | `~/repos/personal/kube_local/secrets/dev/cert-manager-local-ca.yaml` |
 
-### 1. A key pair
+### 1. Your key, in the keyring
+
+Only the `AGE-SECRET-KEY-` line is stored; the public key can always be
+derived from it.
 
 ```sh
-mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
+age-keygen 2>/dev/null | grep '^AGE-SECRET-KEY-' \
+  | secret-tool store --label="sops age key" service sops-age
+secret-tool lookup service sops-age | age-keygen -y
 ```
 
-It prints the public key (`age1...`). sops finds the private key at that path
-on Linux; on macOS set `SOPS_AGE_KEY_FILE` to it.
+The second line prints your public key (`age1...`). sops runs
+`$SOPS_AGE_KEY_CMD` whenever it needs to decrypt, so the private key is never
+written to a file.
 
 > [!CAUTION]
-> Back `keys.txt` up somewhere outside this machine. Lose it and nothing in
-> Git can be decrypted.
+> Back it up outside this machine: put the output of
+> `secret-tool lookup service sops-age` in your password manager. Your key is
+> what re-keys the files after a rebuild; lose it with the cluster and
+> nothing in Git can be decrypted.
 
-### 2. Rules, so you don't pass flags each time
+### 2. A key for the cluster
+
+Generated straight into the Secret, and kept nowhere else:
+
+```sh
+age-keygen 2>/dev/null | grep '^AGE-SECRET-KEY-' \
+  | kubectl --context k3d-dev -n flux-system create secret generic sops-age \
+      --from-file=age.agekey=/dev/stdin
+kubectl --context k3d-dev -n flux-system get secret sops-age \
+  -o jsonpath='{.data.age\.agekey}' | base64 -d | age-keygen -y
+```
+
+The second command prints the cluster's public key. Flux only reads Secret
+keys ending in `.agekey`.
+
+### 3. Rules, so you don't pass flags each time
 
 **Write `~/repos/personal/kube_local/.sops.yaml`**
 ```yaml
@@ -91,14 +126,10 @@ on Linux; on macOS set `SOPS_AGE_KEY_FILE` to it.
 creation_rules:
   - path_regex: secrets/.*\.yaml$
     encrypted_regex: ^(data|stringData)$
-    age: age1...   # yours: age-keygen -y ~/.config/sops/age/keys.txt
-```
-
-### 3. Give Flux the private key
-
-```sh
-kubectl --context k3d-dev -n flux-system create secret generic sops-age \
-  --from-file=age.agekey="$HOME/.config/sops/age/keys.txt"
+    # yours (step 1), then the cluster's (step 2)
+    age: >-
+      age1...,
+      age1...
 ```
 
 ### 4. The hand-made Secrets as encrypted files
@@ -197,7 +228,8 @@ sofka / k9s: `:secrets default`, `x` on `demo`
 | --- | --- |
 | `sops set ~/repos/personal/kube_local/secrets/dev/demo.yaml '["data"]["password"]' "\"$(printf hunter3 \| base64)\""`, then `git diff` | Only that value's ciphertext and `sops.mac` change. `sops <file>` does the same in your editor, decrypted, and re-encrypts on save. |
 | Encrypt a copy without `encrypted_regex`, in `~/repos/personal/scratch/05/` | Every value is encrypted, `metadata.name` too: Kubernetes rejects the file, and nobody reviewing it can tell what it is. |
-| Move `~/.config/sops/age/keys.txt` aside, then `sops --decrypt` | Fails, as on any machine without the key. The cluster doesn't notice: it has its own copy in `sops-age`. |
+| `env -u SOPS_AGE_KEY_CMD sops --decrypt ~/repos/personal/kube_local/secrets/dev/demo.yaml` | Fails, as on any machine without a key. The cluster doesn't notice: it has its own. |
+| `SOPS_AGE_KEY="$(kubectl --context k3d-dev -n flux-system get secret sops-age -o jsonpath='{.data.age\.agekey}' \| base64 -d)" env -u SOPS_AGE_KEY_CMD sops --decrypt ~/repos/personal/kube_local/secrets/dev/demo.yaml` | Works too: the cluster's key alone opens the file, as yours does. |
 
 ### 1. Remove it
 
@@ -215,17 +247,35 @@ kubectl --context k3d-dev -n default get secret demo
 
 1. Edit the TSIG Secret with `sops ~/repos/personal/kube_local/secrets/dev/external-dns-tsig.yaml`, push,
    and watch ExternalDNS's updates start failing. Put it back.
-2. Rebuild the cluster. Recreate `sops-age` (step 3) before Flux syncs
-   `secrets`, and see everything else come back on its own.
-3. Harder: add a second age recipient (a key for "CI") to `~/repos/personal/kube_local/.sops.yaml`, then
-   `sops updatekeys` each file. Prove either key alone can decrypt.
+2. Rebuild the cluster. Its key went with it, and Git's files are still
+   encrypted to the old one. Make a new key (step 2), replace the cluster's
+   public key in `~/repos/personal/kube_local/.sops.yaml`, re-key every file
+   with your own key, commit and push. Everything else comes back on its own.
+
+   ```sh
+   for f in ~/repos/personal/kube_local/secrets/dev/*.yaml; do
+     sops --config ~/repos/personal/kube_local/.sops.yaml updatekeys -y "$f"
+   done
+   ```
+
+3. Harder: a colleague joins, then leaves. Store a second key as
+   `service sops-age-colleague` (step 1), add its public key to
+   `~/repos/personal/kube_local/.sops.yaml`, re-key, and prove it decrypts on
+   its own with
+   `SOPS_AGE_KEY_CMD='secret-tool lookup service sops-age-colleague'`. Then
+   remove it and re-key again. Why isn't that enough? Finish with
+   `secret-tool clear service sops-age-colleague`.
+
+   **Answer**: their key still opens every earlier commit in Git history.
+   When someone leaves, rotate the values themselves, not just the keys.
 
 ## Where it gets hard
 
 - `flux-system` applies everything under `~/repos/personal/kube_local/clusters/dev/` with no decryption,
   so an encrypted file there fails to apply. Secrets live under `~/repos/personal/kube_local/secrets/`.
-- `sops-age` is the one Secret recreated by hand after every rebuild. Until it
-  exists, `secrets` fails with a decryption error:
+- After a rebuild the cluster has no key, and the files are encrypted to the
+  old one. Until step 2 and exercise 2's re-key are done, `secrets` fails
+  with a decryption error:
   `kubectl --context k3d-dev -n flux-system describe kustomization secrets`
   shows it. In sofka or k9s, `ctrl-z` on `:kustomizations all`; sofka's `X`
   gives the message ([lesson 0](00-tools.md)).
@@ -233,6 +283,11 @@ kubectl --context k3d-dev -n default get secret demo
   rebuild BIND has a key Git doesn't; redo step 4 and push.
 - `sops --encrypt` on a file that's already encrypted fails; `sops` (edit) is
   for changing one.
+- With `SOPS_AGE_KEY_CMD` unset, or the keyring locked (over SSH, say), sops
+  falls back to `~/.config/sops/age/keys.txt`, finds nothing, and reports that
+  no key could decrypt the file.
+- sops runs `SOPS_AGE_KEY_CMD` without a shell: a pipe in it fails with the
+  same "no key could decrypt" message. Keep it one command.
 
 ## Links
 
