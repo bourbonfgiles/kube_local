@@ -1,8 +1,8 @@
 # 7. Monitoring
 
 > You end up with: Prometheus scraping the cluster, Cilium and Hubble, and
-> Grafana at `grafana.kube.internal` with the network as graphs as well as
-> flows.
+> Grafana at `grafana.kube.internal`, its admin login from SOPS, with the
+> network as graphs as well as flows.
 
 ## What it is
 
@@ -47,11 +47,11 @@ exposes.
 ## Requirements
 
 **In the cluster**: lessons 0 to 6 done. Cilium's metrics are turned on
-through the HelmRelease lesson 2 handed to Flux. Roughly 2 GB of spare
-memory.
+through the HelmRelease lesson 2 handed to Flux. Grafana's login comes from
+SOPS (lesson 5). Roughly 2 GB of spare memory.
 
-**On your machine**: `kubectl`, `helm`, `flux`, `hubble`, and `sofka`
-or `k9s` ([lesson 0](00-tools.md)).
+**On your machine**: `kubectl`, `helm`, `flux`, `hubble`, `sops`, `openssl`,
+and `sofka` or `k9s` ([lesson 0](00-tools.md)).
 
 ## By hand, for comparison
 
@@ -83,6 +83,7 @@ With Flux the order becomes `dependsOn`.
 | HelmRelease | `kube-prometheus-stack` | `~/repos/personal/kube_local/infrastructure/base/monitoring/release.yaml` |
 | ConfigMap | `kube-prometheus-stack-values-base` | `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml` |
 | ConfigMap | `kube-prometheus-stack-values-dev` | `~/repos/personal/kube_local/infrastructure/dev/monitoring/values.yaml` |
+| Secret, encrypted | `monitoring/grafana-admin` | `~/repos/personal/kube_local/secrets/dev/monitoring-grafana-admin.yaml` |
 | ServiceMonitor | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml` |
 | HTTPRoute | `grafana` | `~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml` |
 | ConfigMap, changed | `kube-system/cilium-values-base` | `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` |
@@ -181,6 +182,9 @@ data:
       prometheusSpec:
         serviceMonitorSelectorNilUsesHelmValues: false
         podMonitorSelectorNilUsesHelmValues: false
+    grafana:
+      admin:
+        existingSecret: grafana-admin   # step 2; keys admin-user, admin-password
 ```
 
 **Write `~/repos/personal/kube_local/infrastructure/dev/monitoring/values.yaml`**
@@ -205,7 +209,28 @@ data:
       enabled: false
 ```
 
-### 2. Grafana's route
+### 2. Grafana's admin login
+
+Without `existingSecret` the chart makes up a password and keeps it in its own
+Secret. With it, the chart makes no Secret and Grafana reads yours. The
+password is generated straight into the encrypted file, so you never see it
+until you need it:
+
+```sh
+f=~/repos/personal/kube_local/secrets/dev/monitoring-grafana-admin.yaml
+kubectl --context k3d-dev -n monitoring create secret generic grafana-admin \
+  --from-literal=admin-user=admin \
+  --from-literal=admin-password="$(openssl rand -base64 24)" \
+  --dry-run=client -o yaml \
+  | sops --config ~/repos/personal/kube_local/.sops.yaml encrypt --filename-override "$f" > "$f"
+grep -c '^sops:' "$f"
+```
+
+`1`: encrypted. Lesson 5's `secrets` Kustomization applies it once `infra-base`
+has made the `monitoring` namespace. Until then Grafana's pod waits in
+`CreateContainerConfigError`, then starts by itself.
+
+### 3. Grafana's route
 
 **Write `~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml`**
 ```yaml
@@ -226,7 +251,7 @@ spec:
           port: 80
 ```
 
-### 3. Cilium's metrics
+### 4. Cilium's metrics
 
 In `cilium-values-base`, since you'd want these on EKS too:
 
@@ -371,10 +396,10 @@ spec:
       name: cilium-values-${CLUSTER_NAME}
 ```
 
-### 4. Push and watch
+### 5. Push and watch
 
 ```sh
-git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/cilium/ ~/repos/personal/kube_local/infrastructure/
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/cilium/ ~/repos/personal/kube_local/infrastructure/ ~/repos/personal/kube_local/secrets/
 git -C ~/repos/personal/kube_local commit -m "Monitoring with Flux"
 git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization flux-system --with-source
@@ -384,13 +409,13 @@ kubectl --context k3d-dev get helmreleases -A -w
 sofka / k9s: `ctrl-z` on
 `:helmreleases all` leaves only the ones not ready.
 
-### 5. Look at it
+### 6. Look at it
 
-Grafana is at <https://grafana.kube.internal>, user `admin`. Its password, and
-a forward to Prometheus, which has no route:
+Grafana is at <https://grafana.kube.internal>, user `admin`. Its password,
+from your Secret, and a forward to Prometheus, which has no route:
 
 ```sh
-kubectl --context k3d-dev -n monitoring get secret kube-prometheus-stack-grafana \
+kubectl --context k3d-dev -n monitoring get secret grafana-admin \
   -o jsonpath='{.data.admin-password}' | base64 -d
 kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090
 ```
@@ -400,9 +425,9 @@ kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-p
 
 sofka / k9s: `:svc monitoring`, then forward on the Service (sofka `f`,
 k9s `Shift-f`); `:pf` lists running forwards. The password:
-`:secrets monitoring`, `x`.
+`:secrets monitoring`, `x` on `grafana-admin`.
 
-### 6. Your own ServiceMonitor
+### 7. Your own ServiceMonitor
 
 podinfo serves Prometheus metrics on its HTTP port. Scrape it. It goes with
 podinfo, so it leaves with podinfo in lesson 10:
@@ -455,6 +480,7 @@ Each row is one commit, then its revert. What happens is the point; try any you 
 | --- | --- | --- |
 | ServiceMonitor `selector.matchLabels` `app.kubernetes.io/name: nope` | `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml` | The target is gone within a minute and nothing errors: Flux applied a valid object, Prometheus matched nothing. |
 | `prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues: true` | `~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml` | Only the chart's own ServiceMonitors are scraped; podinfo's and Cilium's are ignored. |
+| A new `admin-password`: rerun step 2's block, push | `~/repos/personal/kube_local/secrets/dev/monitoring-grafana-admin.yaml` | The Secret changes, Grafana doesn't: it read the password into an environment variable at start. `kubectl --context k3d-dev -n monitoring rollout restart deployment kube-prometheus-stack-grafana` picks it up. No revert needed |
 | Endpoint `interval: 5s` | `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml` | Smoother graphs, three times the samples. |
 
 ## Exercises
@@ -480,6 +506,12 @@ Each row is one commit, then its revert. What happens is the point; try any you 
   edge and whether it's met.
 - HTTP metrics (`httpV2`) only exist for traffic Cilium parses at L7: traffic
   through the Gateway, or pods with an L7 CiliumNetworkPolicy.
+- Grafana takes its admin login from environment variables, read once at
+  start. A new password in Git needs a pod restart; nothing restarts it for
+  you (Reloader would). Here Grafana has no persistent storage, so a restart
+  recreates the admin user. With persistence on, Grafana keeps the user it
+  first made, and the password is reset with `grafana cli admin
+  reset-admin-password` instead.
 - Upgrading `prometheus-operator-crds` across a major version can need manual
   steps; read the chart's upgrade notes first.
 - Scraping the k3s control plane needs bind-address flags on the server: a

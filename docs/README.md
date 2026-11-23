@@ -36,7 +36,7 @@ come before Flux, by hand. Lesson 2 is Flux itself. Lesson 0 is a reference for 
 | 3 | [ExternalDNS](03-external-dns.md) | Routes get real `*.kube.internal` names | 2 |
 | 4 | [cert-manager](04-cert-manager.md) | HTTPS on the Gateway, trusted by Zen | 3 |
 | 5 | [SOPS](05-sops.md) | Secrets encrypted in Git | 2 |
-| 6 | [Flux Operator](06-flux-operator.md) | Flux run by Flux Operator; the Flux Web UI at `flux.kube.internal` | 2, 3, 4 |
+| 6 | [Flux Operator](06-flux-operator.md) | Flux run by Flux Operator; the Flux Web UI at `flux.kube.internal`; failures posted to Discord | 2, 3, 4, 5 |
 | 7 | [Monitoring](07-monitoring.md) | Prometheus, Grafana, Cilium and Hubble metrics | 2 |
 | 8 | [Registry](08-registry.md) | Images mirrored into the local ECR stand-in | 2 |
 | 9 | [Image promotion](09-image-promotion.md) | Flux committing new tags to Git | 8 |

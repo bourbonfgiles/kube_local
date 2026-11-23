@@ -1,8 +1,9 @@
-# 6. Flux Operator and the Web UI
+# 6. Flux Operator, the Web UI and Discord alerts
 
 > You end up with: Flux managed by Flux Operator from a `FluxInstance` in
-> Git, the bootstrap files gone, and the Flux Web UI at
-> `https://flux.kube.internal`.
+> Git, the bootstrap files gone, the Flux Web UI at
+> `https://flux.kube.internal`, and every Flux failure posted to a Discord
+> channel.
 
 ## What it is
 
@@ -51,6 +52,30 @@ intended: each can repair the other.
 The chart creates both ClusterRoles. Locally, the default is the safest
 choice: read-only, and only your machine can reach the Gateway.
 
+### Alerts to Discord
+
+The UI shows a failure when you look. The **notification-controller**, part
+of Flux since lesson 2, tells you without looking: every Flux controller
+sends it events, and it forwards the ones you select.
+
+| Kind | Says |
+| --- | --- |
+| `Provider` | Where to send: `type: discord`, and a Secret holding the webhook URL |
+| `Alert` | What to send: which objects (`eventSources`), which severity, to which Provider |
+| `Receiver` | The other way: a webhook that triggers a reconcile, such as a GitHub push. Not used here |
+
+```mermaid
+flowchart LR
+  ctl["kustomize-, helm-,<br/>source-controller"] -->|"events"| nc["notification-controller"]
+  alert["Alert discord<br/>errors, these objects"] --> nc
+  nc --> prov["Provider discord"]
+  sec["Secret discord-webhook<br/>from SOPS"] --> prov
+  prov -->|"webhook"| dc["Your Discord channel"]
+```
+
+The webhook URL is a credential: anyone who has it can post to the channel.
+It goes in Git through SOPS (lesson 5), like the TSIG key.
+
 ## On EKS
 
 The same chart and the same `FluxInstance`, which is why it's worth learning
@@ -62,12 +87,13 @@ here: it's how Flux is increasingly installed in production. What differs:
 | Exposure | HTTPRoute on Gateway `web`, mkcert TLS | An internal ALB through the AWS Load Balancer Controller, an ACM certificate |
 | Sync source | GitRepository with a deploy key | The same, or an OCI artifact in ECR (`sync.kind: OCIRepository`, `sync.provider: aws`) with no key in the cluster |
 | Reaching the UI pod | A CiliumNetworkPolicy for the Gateway (below) | The ALB targets pod IPs from the VPC, so the policy allows the VPC's CIDR instead |
+| Alerts | A Discord webhook, its URL in a SOPS Secret | Slack, Teams or PagerDuty; the URL from SOPS with KMS, or External Secrets. `eventMetadata.cluster` tells the clusters apart in one channel |
 
 ## Requirements
 
 **In the cluster**: lessons 0 to 5 done. This lesson uses the HTTPS Gateway
-(lesson 4), its DNS name (lesson 3), and the `infra-dev-config` layer
-(lesson 4) for the `FluxInstance`.
+(lesson 4), its DNS name (lesson 3), the `infra-dev-config` layer
+(lesson 4) for the `FluxInstance`, and SOPS (lesson 5) for the webhook URL.
 
 Check the version Flux runs now. The `FluxInstance` pins the same minor, so
 the hand-over isn't also an upgrade:
@@ -76,8 +102,12 @@ the hand-over isn't also an upgrade:
 flux --context k3d-dev version
 ```
 
-**On your machine**: `kubectl`, `helm`, `flux`, `hubble`, `git`, `curl`, and
-`sofka` or `k9s` ([lesson 0](00-tools.md)).
+**On your machine**: `kubectl`, `helm`, `flux`, `hubble`, `git`, `curl`,
+`sops`, and `sofka` or `k9s` ([lesson 0](00-tools.md)).
+
+**In Discord**: a server where you can manage webhooks, and a channel for the
+alerts. Server Settings > Integrations > Webhooks > New Webhook, pick the
+channel, then Copy Webhook URL. Keep it on the clipboard for step 4.
 
 ## By hand, for comparison
 
@@ -110,10 +140,12 @@ lists every key.
 | CiliumNetworkPolicy | `flux-system/flux-web-from-gateway` | `~/repos/personal/kube_local/infrastructure/dev/flux-operator/gateway-policy.yaml` |
 | FluxInstance | `flux-system/flux` | `~/repos/personal/kube_local/infrastructure/dev-config/flux/instance.yaml` |
 | Removed | The bootstrap files | `~/repos/personal/kube_local/clusters/dev/flux-system/` |
+| Secret, encrypted | `flux-system/discord-webhook` | `~/repos/personal/kube_local/secrets/dev/flux-discord-webhook.yaml` |
+| Provider, Alert | `flux-system/discord` | `~/repos/personal/kube_local/infrastructure/dev-config/flux/notifications.yaml` |
 
-Three commits, in this order: the operator and the UI, then the
-`FluxInstance`, then the bootstrap files' removal. Each is checked before the
-next.
+Four commits, in this order: the operator and the UI, then the
+`FluxInstance`, then the bootstrap files' removal, then the Discord alerts.
+Each is checked before the next.
 
 ### 1. The operator and the UI
 
@@ -379,7 +411,83 @@ kubectl --context k3d-dev get kustomizations,helmreleases -A
 
 Every Kustomization and HelmRelease `Ready`, every controller still running.
 
-### 4. Look at it
+### 4. Failures to Discord
+
+The webhook URL, encrypted on its way to disk as in lesson 5. `read -s`
+keeps it out of your shell history and off the screen:
+
+```sh
+read -rs 'url?Discord webhook URL: '; echo
+f=~/repos/personal/kube_local/secrets/dev/flux-discord-webhook.yaml
+kubectl --context k3d-dev -n flux-system create secret generic discord-webhook \
+  --from-literal=address="$url" --dry-run=client -o yaml \
+  | sops --config ~/repos/personal/kube_local/.sops.yaml encrypt --filename-override "$f" > "$f"
+unset url
+grep -c '^sops:' "$f"
+```
+
+`1`: it's encrypted. Flux's Discord provider reads the URL from the `address`
+key.
+
+The Provider and the Alert are this cluster's: its channel, its name in each
+message. `*` selects every object of a kind, but only in one namespace, so
+each namespace with a HelmRelease or a chart source gets its own lines.
+Errors only: `info` would post every successful reconcile too.
+
+**Write `~/repos/personal/kube_local/infrastructure/dev-config/flux/notifications.yaml`**
+```yaml
+# ~/repos/personal/kube_local/infrastructure/dev-config/flux/notifications.yaml
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: discord
+  namespace: flux-system
+spec:
+  type: discord
+  username: flux-dev
+  secretRef:
+    name: discord-webhook
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: discord
+  namespace: flux-system
+spec:
+  providerRef:
+    name: discord
+  eventSeverity: error
+  eventMetadata:
+    cluster: dev
+  eventSources:
+    # No namespace: the Alert's own, flux-system
+    - { kind: GitRepository, name: '*' }
+    - { kind: Kustomization, name: '*' }
+    - { kind: HelmRelease, name: '*' }
+    - { kind: OCIRepository, name: '*' }
+    - { kind: HelmRelease, name: '*', namespace: kube-system }
+    - { kind: HelmRepository, name: '*', namespace: kube-system }
+    - { kind: HelmRelease, name: '*', namespace: cert-manager }
+    - { kind: OCIRepository, name: '*', namespace: cert-manager }
+    - { kind: HelmRelease, name: '*', namespace: external-dns }
+    - { kind: HelmRepository, name: '*', namespace: external-dns }
+    - { kind: HelmRelease, name: '*', namespace: podinfo }
+    - { kind: OCIRepository, name: '*', namespace: podinfo }
+```
+
+```sh
+git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/secrets/ ~/repos/personal/kube_local/infrastructure/dev-config/
+git -C ~/repos/personal/kube_local commit -m "Flux alerts to Discord"
+git -C ~/repos/personal/kube_local push
+flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev get alert-providers -n flux-system
+flux --context k3d-dev get alerts -n flux-system
+```
+
+Both `Ready`. Nothing posts until something fails: exercise 1 is the test.
+sofka / k9s: `:providers flux-system`, `:alerts flux-system`
+
+### 5. Look at it
 
 `https://flux.kube.internal`:
 
@@ -405,6 +513,8 @@ Each row is one commit, then its revert unless it says otherwise. Try any you li
 | Change | File | What happens |
 | --- | --- | --- |
 | `distribution.version: "2.10.x"` | `~/repos/personal/kube_local/infrastructure/dev-config/flux/instance.yaml` | A Flux upgrade as a commit: the operator rolls the controllers to 2.10, and `flux --context k3d-dev version` shows it. Keep this one; your CLI is 2.10 |
+| `eventSeverity: info` | `~/repos/personal/kube_local/infrastructure/dev-config/flux/notifications.yaml` | Every reconcile that changes something posts too: upgrades, applies, new artifacts. Useful for a deploy log, noisy as an alarm |
+| `suspend: true` on the Alert | `~/repos/personal/kube_local/infrastructure/dev-config/flux/notifications.yaml` | Silence while you break things on purpose. Events during it are dropped, not queued |
 | Delete `gateway-policy.yaml` | `~/repos/personal/kube_local/infrastructure/dev/flux-operator/gateway-policy.yaml` | The UI hangs, then `503`. `hubble observe --namespace flux-system --verdict DROPPED` shows `ingress` → `flux-operator` dropped. Put it back |
 | Remove `image-automation-controller` from `components` | `~/repos/personal/kube_local/infrastructure/dev-config/flux/instance.yaml` | The operator deletes that Deployment within a reconcile. Put it back before lesson 9 |
 | `web.config` with `authentication.type: Anonymous`, `anonymous.groups: [flux-web-admins]`, plus a ClusterRoleBinding of `flux-web-admins` to `flux-web-admin` | `~/repos/personal/kube_local/infrastructure/dev/flux-operator/values.yaml`, a new file beside it | Reconcile, suspend and resume buttons appear for everyone who reaches the page. Bound to `flux-web-user` instead, it can read Secrets, which the default can't |
@@ -413,12 +523,16 @@ Each row is one commit, then its revert unless it says otherwise. Try any you li
 
 1. Break podinfo's chart: set `ref.tag` in
    `~/repos/personal/kube_local/apps/base/podinfo/source.yaml` to a tag that
-   doesn't exist, push, and find the failure in the UI before sofka. Revert.
+   doesn't exist and push. Discord gets the `OCIRepository` error with
+   `cluster: dev`; find the same failure in the UI, then sofka. Revert.
 2. Write down how this cluster now comes back after `kube-delete` /
    `kube-create`: no `flux bootstrap`, so what creates the deploy key Secret,
    the operator and the `FluxInstance`, in what order? Compare with the
    **Example only** under Where it gets hard.
-3. Harder: with the Anonymous admin row applied, suspend `podinfo` from the
+3. Rotate the webhook: delete it in Discord, make a new one, and rerun step
+   4's first block with the new URL. It overwrites the encrypted file. Push,
+   then break something to prove the new one works and the old one doesn't.
+4. Harder: with the Anonymous admin row applied, suspend `podinfo` from the
    UI. Find in `kubectl --context k3d-dev get helmrelease podinfo -n podinfo
    -o yaml` what that did, and why Flux doesn't undo it from Git.
 
@@ -431,6 +545,15 @@ Each row is one commit, then its revert unless it says otherwise. Try any you li
 - The loop: Flux installs the operator, the operator runs Flux. If
   helm-controller is broken, upgrade the operator with the **Example only**
   `helm` command above; the HelmRelease adopts the release again afterwards.
+- An Alert's `*` doesn't cross namespaces. Each later lesson that adds a
+  namespace with a HelmRelease needs its lines in `notifications.yaml`, and
+  podinfo's go when it's retired in lesson 10. A failure in a namespace the
+  Alert doesn't list is silent.
+- Silence isn't health. If Flux itself, or the notification-controller, is
+  down, nothing posts. Something outside Flux has to watch Flux: lesson 7's
+  Alertmanager can.
+- Errors only: something stuck without failing, such as a `dependsOn` that's
+  never met, posts nothing.
 - `flux-system` NetworkPolicies drop anything that isn't a pod, so the UI
   behind the Gateway needs the Cilium policy. The symptom is a hang, not an
   error.
@@ -470,3 +593,5 @@ commit.
 - <https://fluxoperator.dev/docs/instance/controllers/>
 - <https://fluxoperator.dev/docs/web-ui/user-management/>
 - <https://fluxoperator.dev/docs/web-ui/web-config-api/>
+- <https://fluxcd.io/flux/components/notification/providers/#discord>
+- <https://fluxcd.io/flux/components/notification/alerts/>
