@@ -121,6 +121,17 @@ keys ending in `.agekey`.
 
 ### 3. Rules, so you don't pass flags each time
 
+Without a rules file, every encrypt spells out who and what:
+
+**Example only**
+```sh
+sops --encrypt --in-place --age 'age1...,age1...' \
+  --encrypted-regex '^(data|stringData)$' secret.yaml
+```
+
+`.sops.yaml` holds those flags once. sops takes the first rule whose
+`path_regex` matches the file.
+
 **Write `~/repos/personal/kube_local/.sops.yaml`**
 ```yaml
 # ~/repos/personal/kube_local/.sops.yaml
@@ -133,10 +144,25 @@ creation_rules:
       age1...
 ```
 
+| Line | Means |
+| --- | --- |
+| `path_regex` | Which files the rule covers: any `.yaml` under `secrets/`. A file matching no rule won't encrypt without flags. |
+| `encrypted_regex` | Which values are encrypted: only under `data` and `stringData`. `kind` and `metadata` stay readable, so Kubernetes can apply the file and a reviewer can tell what it is. |
+| `age: >-` | The recipients, as public keys. `>-` folds the lines into one string, `age1..., age1...`, which sops splits on commas. Each file is encrypted to all of them; any one private key opens it. |
+
+> [!IMPORTANT]
+> sops reads this file only when it encrypts a file or re-keys one. Each
+> encrypted file records its own recipients in its `sops:` block, so editing
+> `.sops.yaml` changes nothing already in Git. Adding or removing a recipient
+> is always two steps: edit the rules, then `sops updatekeys` every file
+> (exercises 2 and 3).
+
+sops looks for `.sops.yaml` from the directory you run it in, upwards. The
+commands below pass `--config` so it works from anywhere.
+
 ### 4. The hand-made Secrets as encrypted files
 
-The TSIG Secret, encrypted before it's staged. `--config` points sops at the
-rules, wherever you run it from:
+The TSIG Secret, encrypted before it's staged:
 
 ```sh
 mkdir -p ~/repos/personal/kube_local/secrets/dev
