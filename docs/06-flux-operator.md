@@ -370,7 +370,7 @@ spec:
 git -C ~/repos/personal/kube_local add ~/repos/personal/kube_local/infrastructure/dev-config/
 git -C ~/repos/personal/kube_local commit -m "Flux managed by Flux Operator"
 git -C ~/repos/personal/kube_local push
-flux --context k3d-dev reconcile kustomization flux-system --with-source
+flux --context k3d-dev reconcile kustomization infra-dev-config --with-source
 kubectl --context k3d-dev -n flux-system get fluxinstance flux -w
 ```
 
