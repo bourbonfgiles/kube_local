@@ -825,8 +825,13 @@ new Helm revision, not a Helm rollback.
 ## Where it gets hard
 
 - Flux reads GitHub, not your checkout. Push before expecting anything.
-- A HelmRelease in `base/` reports its dev ConfigMap missing until the dev
-  layer has applied it. It retries on its own.
+- A new chart's first install logs `ValuesError: could not resolve ConfigMap
+  chart values reference '<ns>/<name>-values-dev' ... not found` for about
+  30 seconds. `infra-base` applies the HelmRelease, and `infra-dev` applies
+  the dev ConfigMap only once `infra-base` is Ready. helm-controller retries,
+  and upgrades never hit it because both ConfigMaps already exist. If the error
+  outlasts `infra-dev` going Ready, the ConfigMap is missing from
+  `infrastructure/dev/kustomization.yaml`.
 - CRD ordering: a Kustomization that applies an object whose CRD comes from a
   chart fails until the chart is installed. If something the chart needs is in
   the same Kustomization, they wait on each other forever. Lesson 4 gives such
