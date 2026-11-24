@@ -1,0 +1,30 @@
+# ~/repos/personal/kube_local/infrastructure/dev-config/flux/instance.yaml
+apiVersion: fluxcd.controlplane.io/v1
+kind: FluxInstance
+metadata:
+  name: flux
+  namespace: flux-system
+spec:
+  distribution:
+    # The minor Flux runs now (`flux version`); bump it in Iterate
+    version: "2.9.x"
+    registry: ghcr.io/fluxcd
+  components:
+    - source-controller
+    - kustomize-controller
+    - helm-controller
+    - notification-controller
+    - image-reflector-controller
+    - image-automation-controller
+  cluster:
+    type: kubernetes
+    multitenant: false
+    networkPolicy: true
+    domain: cluster.local
+  sync:
+    kind: GitRepository
+    url: ssh://git@github.com/bourbonfgiles/kube_local
+    ref: refs/heads/master
+    path: clusters/dev
+    pullSecret: flux-system
+    interval: 1m
