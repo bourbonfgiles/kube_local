@@ -7,7 +7,7 @@ metadata:
 spec:
   distribution:
     # The minor Flux runs now (`flux version`); bump it in Iterate
-    version: "2.9.x"
+    version: "2.10.x"
     registry: ghcr.io/fluxcd
   components:
     - source-controller
