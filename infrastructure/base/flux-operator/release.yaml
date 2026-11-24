@@ -1,0 +1,16 @@
+# ~/repos/personal/kube_local/infrastructure/base/flux-operator/release.yaml
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: flux-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  chartRef:
+    kind: OCIRepository
+    name: flux-operator
+  valuesFrom:
+    - kind: ConfigMap
+      name: flux-operator-values-base
+    - kind: ConfigMap
+      name: flux-operator-values-${CLUSTER_NAME}

@@ -1,0 +1,13 @@
+# ~/repos/personal/kube_local/infrastructure/dev/flux-operator/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flux-operator-values-dev
+  namespace: flux-system
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    # No authentication block: anyone who reaches the UI can read, nobody can act.
+    web:
+      config: {}
