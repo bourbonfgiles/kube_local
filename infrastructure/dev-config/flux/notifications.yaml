@@ -1,0 +1,37 @@
+# ~/repos/personal/kube_local/infrastructure/dev-config/flux/notifications.yaml
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Provider
+metadata:
+  name: discord
+  namespace: flux-system
+spec:
+  type: discord
+  username: flux-dev
+  secretRef:
+    name: discord-webhook
+---
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
+kind: Alert
+metadata:
+  name: discord
+  namespace: flux-system
+spec:
+  providerRef:
+    name: discord
+  eventSeverity: error
+  eventMetadata:
+    cluster: dev
+  eventSources:
+    # No namespace: the Alert's own, flux-system
+    - { kind: GitRepository, name: "*" }
+    - { kind: Kustomization, name: "*" }
+    - { kind: HelmRelease, name: "*" }
+    - { kind: OCIRepository, name: "*" }
+    - { kind: HelmRelease, name: "*", namespace: kube-system }
+    - { kind: HelmRepository, name: "*", namespace: kube-system }
+    - { kind: HelmRelease, name: "*", namespace: cert-manager }
+    - { kind: OCIRepository, name: "*", namespace: cert-manager }
+    - { kind: HelmRelease, name: "*", namespace: external-dns }
+    - { kind: HelmRepository, name: "*", namespace: external-dns }
+    - { kind: HelmRelease, name: "*", namespace: podinfo }
+    - { kind: OCIRepository, name: "*", namespace: podinfo }
