@@ -1,7 +1,8 @@
 # 7. Monitoring
 
 > You end up with: Prometheus scraping the cluster, Cilium and Hubble, and
-> Grafana at `grafana.kube.internal`, its admin login from SOPS, with the
+> Grafana and Prometheus at `grafana.kube.internal` and
+> `prometheus.kube.internal`, Grafana's admin login from SOPS, with the
 > network as graphs as well as flows.
 
 ## What it is
@@ -42,7 +43,8 @@ waiting for the whole stack.
 The same chart, or Amazon Managed Service for Prometheus with Amazon Managed
 Grafana, where an in-cluster agent writes to AWS instead of storing locally.
 The control-plane targets disabled below exist on EKS only as what AWS
-exposes.
+exposes. Prometheus has no login: there it stays internal or goes behind
+auth, never on a public route.
 
 ## Requirements
 
@@ -85,7 +87,7 @@ With Flux the order becomes `dependsOn`.
 | ConfigMap | `kube-prometheus-stack-values-dev` | `~/repos/personal/kube_local/infrastructure/dev/monitoring/values.yaml` |
 | Secret, encrypted | `monitoring/grafana-admin` | `~/repos/personal/kube_local/secrets/dev/monitoring-grafana-admin.yaml` |
 | ServiceMonitor | `podinfo/podinfo` | `~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml` |
-| HTTPRoute | `grafana` | `~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml` |
+| HTTPRoute | `grafana`, `prometheus` | `~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml` |
 | ConfigMap, changed | `kube-system/cilium-values-base` | `~/repos/personal/kube_local/infrastructure/base/cilium/values.yaml` |
 | HelmRelease, changed | `kube-system/cilium` | `~/repos/personal/kube_local/infrastructure/base/cilium/release.yaml` |
 
@@ -230,7 +232,7 @@ grep -c '^sops:' "$f"
 has made the `monitoring` namespace. Until then Grafana's pod waits in
 `CreateContainerConfigError`, then starts by itself.
 
-### 3. Grafana's route
+### 3. Routes for Grafana and Prometheus
 
 **Write `~/repos/personal/kube_local/infrastructure/base/monitoring/route.yaml`**
 ```yaml
@@ -249,7 +251,26 @@ spec:
     - backendRefs:
         - name: kube-prometheus-stack-grafana
           port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  parentRefs:
+    - name: web
+      namespace: gateway
+  hostnames: ["prometheus.${CLUSTER_DOMAIN}"]
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-prometheus
+          port: 9090
 ```
+
+Grafana's dashboards read from Prometheus, but its own UI is where you check
+what's scraped and try PromQL. The wildcard certificate and ExternalDNS cover
+both names.
 
 ### 4. Cilium's metrics
 
@@ -411,21 +432,17 @@ sofka / k9s: `ctrl-z` on
 
 ### 6. Look at it
 
-Grafana is at <https://grafana.kube.internal>, user `admin`. Its password,
-from your Secret, and a forward to Prometheus, which has no route:
+| UI | Log in | Check |
+| --- | --- | --- |
+| <https://grafana.kube.internal> | `admin`, password from `grafana-admin` | Dashboards load; "Node Exporter / Nodes" has data |
+| <https://prometheus.kube.internal/targets> | None | `cilium-agent`, `cilium-operator` and `hubble` are `UP` |
+
+The password: `:secrets monitoring`, `x` on `grafana-admin`, or
 
 ```sh
 kubectl --context k3d-dev -n monitoring get secret grafana-admin \
-  -o jsonpath='{.data.admin-password}' | base64 -d
-kubectl --context k3d-dev -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090
+  -o jsonpath='{.data.admin-password}' | base64 -d; echo
 ```
-
-<http://localhost:9090/targets> lists `cilium-agent`, `cilium-operator` and
-`hubble`, all `UP`. Leave the forward running for the rest of the lesson.
-
-sofka / k9s: `:svc monitoring`, then forward on the Service (sofka `f`,
-k9s `Shift-f`); `:pf` lists running forwards. The password:
-`:secrets monitoring`, `x` on `grafana-admin`.
 
 ### 7. Your own ServiceMonitor
 
@@ -457,7 +474,7 @@ git -C ~/repos/personal/kube_local push
 flux --context k3d-dev reconcile kustomization apps-base --with-source
 ```
 
-Within a minute `podinfo` is on the targets page. In Prometheus, query
+Within a minute `podinfo` is on <https://prometheus.kube.internal/targets>. In Prometheus, query
 `rate(http_requests_total{namespace="podinfo"}[1m])` while you `curl` it.
 
 `kubectl --context k3d-dev get servicemonitors -A` lists what Prometheus can
@@ -465,10 +482,10 @@ pick up. sofka / k9s: `:servicemonitors all`
 
 ## Iterate
 
-With the Prometheus forward running, this lists what it scrapes:
+This lists what Prometheus scrapes:
 
 ```sh
-curl -s 'http://localhost:9090/api/v1/targets?state=active' \
+curl -s 'https://prometheus.kube.internal/api/v1/targets?state=active' \
   | jq -r '.data.activeTargets[].scrapePool' | sort -u
 ```
 
