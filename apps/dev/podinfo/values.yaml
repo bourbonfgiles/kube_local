@@ -10,3 +10,6 @@ data:
   values.yaml: |
     ui:
       message: k3d
+    image:
+      repository: k3d-registry.localhost:5000/podinfo
+      tag: 6.7.0
