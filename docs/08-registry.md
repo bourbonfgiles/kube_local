@@ -226,7 +226,8 @@ flux --context k3d-dev reconcile kustomization apps-dev --with-source
 kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
 
-Now copy `6.7.1` over the `6.7.0` tag and restart the pods:
+Now push a different image under a tag that already exists: upstream's
+`6.7.1`, into your mirror as `6.7.0`. Then restart the pods:
 
 ```sh
 skopeo copy --all --dest-tls-verify=false \
@@ -237,9 +238,13 @@ kubectl --context k3d-dev -n podinfo rollout status deploy podinfo
 kubectl --context k3d-dev -n podinfo get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].imageID}{"\n"}{end}'
 ```
 
-Same tag, same Git, different `Image ID`: Git no longer says what's running.
-That's what ECR's tag immutability prevents. Put `6.7.0` back from upstream,
-and the pull policy:
+Git and the pod spec still say `6.7.0`, but the `Image ID` has changed: the
+pods run `6.7.1`. Nothing in Git changed, so Git no longer tells you what's
+running. ECR with tag immutability on refuses that push
+(`ImageTagAlreadyExistsException`), so a tag always means one image. On any
+registry, a digest in the values does the same (the Iterate table above).
+
+Undo it: copy the real `6.7.0` back over the tag, and restart:
 
 ```sh
 skopeo copy --all --dest-tls-verify=false \
@@ -249,9 +254,9 @@ kubectl --context k3d-dev -n podinfo rollout restart deploy podinfo
 kubectl --context k3d-dev -n podinfo rollout status deploy podinfo
 ```
 
-The restart pulls the real `6.7.0` while `Always` is still set; with the
-default policy the nodes would keep the copy they cached. Then drop
-`pullPolicy`:
+`pullPolicy: Always` makes the restart pull it again. Under the default,
+`IfNotPresent`, the nodes would keep running the `6.7.1` they cached under
+that tag. Then drop `pullPolicy`:
 
 **Replace `~/repos/personal/kube_local/apps/dev/podinfo/values.yaml`**
 
