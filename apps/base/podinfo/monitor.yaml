@@ -1,0 +1,14 @@
+# ~/repos/personal/kube_local/apps/base/podinfo/monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: podinfo
+  namespace: podinfo
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: podinfo
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
