@@ -96,9 +96,9 @@ lesson lists the ones it needs.
 | `/usr/bin/trust` | 4 | Bazzite base image (brew's `trust` is a different tool) |
 | `sops`, `age`, `age-keygen` | 5 | dotfiles brewfile (`age-keygen` comes with `age`) |
 | `skopeo` | 8, 9 | Bazzite base image |
-| `go`, `ko`, `kwok`, `make` | 13 | dotfiles brewfile; `make` from the base image |
-| `bpftrace`, BCC tools, `bpftool`, `perf` | 14 | os_build image |
-| Minecraft Java client | 14 | Not provided |
+| `go`, `ko`, `kwok`, `make` | 14 | dotfiles brewfile; `make` from the base image |
+| `bpftrace`, BCC tools, `bpftool`, `perf` | 15 | os_build image |
+| Minecraft Java client | 15 | Not provided |
 
 Check with `command -v <tool>`. If one's missing, add it to the dotfiles brewfile
 and run `chezmoi apply` rather than installing it by hand.
@@ -188,7 +188,6 @@ Each is one or two charts and a clear thing to learn.
 
 | Area | Idea |
 | --- | --- |
-| GitOps | **Flux notifications**: `Provider` and `Alert` objects posting reconcile failures to Discord or Slack. |
 | Security | **Tetragon**: Cilium's eBPF runtime security. Trace process execs and file access in pods. |
 | Security | **Trivy Operator**: vulnerability and config reports as CRDs you can browse in sofka or k9s. |
 | Observability | **Loki and Alloy**: logs next to the metrics from lesson 7. |

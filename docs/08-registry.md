@@ -244,7 +244,9 @@ running. ECR with tag immutability on refuses that push
 (`ImageTagAlreadyExistsException`), so a tag always means one image. On any
 registry, a digest in the values does the same (the Iterate table above).
 
-Undo it: copy the real `6.7.0` back over the tag, and restart:
+Repair the mirror: copy upstream's real `6.7.0` back over the tag, and
+restart. This isn't a rollback. Git said `6.7.0` throughout; the upgrade to
+`6.7.1` is lesson 9, done by Flux.
 
 ```sh
 skopeo copy --all --dest-tls-verify=false \
@@ -310,7 +312,7 @@ kubectl --context k3d-dev -n podinfo get pods
 ## Exercises
 
 1. Mirror an image you'll need later (`registry.k8s.io/pause:3.10` for lesson
-   13).
+   14).
 2. Find a multi-arch image's manifest list:
    `skopeo inspect --raw docker://localhost:5050/podinfo:6.7.1 | jq`.
 3. Harder: run Zot as a HelmRelease (built-in auth, RBAC, scanning) as a
