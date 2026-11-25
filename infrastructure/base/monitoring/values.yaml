@@ -1,0 +1,19 @@
+# ~/repos/personal/kube_local/infrastructure/base/monitoring/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-prometheus-stack-values-base
+  namespace: monitoring
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    crds:
+      enabled: false        # the other release owns them
+    prometheus:
+      prometheusSpec:
+        serviceMonitorSelectorNilUsesHelmValues: false
+        podMonitorSelectorNilUsesHelmValues: false
+    grafana:
+      admin:
+        existingSecret: grafana-admin   # step 2; keys admin-user, admin-password

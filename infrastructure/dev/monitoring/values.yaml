@@ -1,0 +1,18 @@
+# ~/repos/personal/kube_local/infrastructure/dev/monitoring/values.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-prometheus-stack-values-dev
+  namespace: monitoring
+  labels:
+    reconcile.fluxcd.io/watch: Enabled
+data:
+  values.yaml: |
+    kubeProxy:
+      enabled: false        # there's no kube-proxy
+    kubeEtcd:
+      enabled: false        # k3s runs these in one process bound to localhost,
+    kubeControllerManager:  # so their targets would only ever show as down
+      enabled: false
+    kubeScheduler:
+      enabled: false

@@ -16,9 +16,28 @@ data:
         enabled: true
       ui:
         enabled: true
+      metrics:
+        enabled:
+          - dns
+          - drop
+          - tcp
+          - flow
+          - "httpV2:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+        serviceMonitor:
+          enabled: true
 
     bpf:
       monitorAggregation: none
 
     gatewayAPI:
       enabled: true
+
+    prometheus:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+    operator:
+      prometheus:
+        enabled: true
+        serviceMonitor:
+          enabled: true
